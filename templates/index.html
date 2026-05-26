@@ -6,12 +6,13 @@
   <title>3CX Holiday Importer</title>
   <style>
     body{font-family:Arial,sans-serif;background:#f6f7fb;color:#1d2433;margin:0}
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}
     .card{background:#fff;border:1px solid #d9deea;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
     h1,h2{margin-top:0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-    .full{grid-column:1/-1}.field label{display:block;font-weight:700;margin-bottom:6px}.field input,.field textarea,.field select{width:100%;padding:10px 12px;border:1px solid #c8d0e0;border-radius:8px;font-size:14px}
+    .full{grid-column:1/-1}.field label{display:block;font-weight:700;margin-bottom:6px}.field input,.field textarea,.field select{width:100%;padding:10px 12px;border:1px solid #c8d0e0;border-radius:8px;font-size:14px;box-sizing:border-box}
     .actions{display:flex;gap:12px;flex-wrap:wrap}.btn{background:#0a6cff;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.btn.secondary{background:#e9eefb;color:#18408b}.note{font-size:13px;color:#5c6a82}.status{padding:10px 12px;border-radius:8px;margin-top:12px;display:none}.ok{background:#e7f7ec;color:#166534}.err{background:#fdecec;color:#991b1b} pre{white-space:pre-wrap;background:#0f172a;color:#dbeafe;padding:16px;border-radius:10px;overflow:auto}
-    @media (max-width: 800px){.grid{grid-template-columns:1fr}}
+    table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #e6ebf5;text-align:left}
+    @media (max-width: 900px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -20,11 +21,11 @@
 
     <div class="card">
       <h2>Konfiguration</h2>
-      <p class="note">Die GUI liest und speichert direkt über <code>/api/config</code>. Verwendeter Pfad: <code>{{ config_path }}</code></p>
+      <p class="note">Aktiver Config-Pfad: <code>{{ config_path }}</code></p>
       <form id="configForm" class="grid">
         <div class="field"><label for="cx_host">3CX Host</label><input id="cx_host" name="cx_host" value="{{ config.get('cx_host','') }}"></div>
         <div class="field"><label for="cx_username">3CX Benutzername</label><input id="cx_username" name="cx_username" value="{{ config.get('cx_username','') }}"></div>
-        <div class="field full"><label for="cx_password">3CX Passwort</label><input id="cx_password" name="cx_password" value="{{ config.get('cx_password','') }}"></div>
+        <div class="field full"><label for="cx_password">3CX Passwort</label><input id="cx_password" name="cx_password" type="password" value="{{ config.get('cx_password','') }}"></div>
         <div class="field"><label for="region">Region</label><input id="region" name="region" value="{{ config.get('region','CH-ZH') }}"></div>
         <div class="field"><label for="prompt_path">Prompt Path</label><input id="prompt_path" name="prompt_path" value="{{ config.get('prompt_path','') }}"></div>
         <div class="field"><label for="tts_engine">TTS Engine</label><select id="tts_engine" name="tts_engine"><option value="piper">piper</option><option value="google">google</option></select></div>
@@ -33,6 +34,7 @@
         <div class="field"><label for="google_api_key">Google API Key</label><input id="google_api_key" name="google_api_key" value="{{ config.get('google_api_key','') }}"></div>
         <div class="field"><label for="company_name">Firma</label><input id="company_name" name="company_name" value="{{ config.get('company_name','') }}"></div>
         <div class="field"><label for="phone_number">Telefon</label><input id="phone_number" name="phone_number" value="{{ config.get('phone_number','') }}"></div>
+        <div class="field"><label for="verify_ssl">SSL prüfen</label><select id="verify_ssl" name="verify_ssl"><option value="false">Nein</option><option value="true">Ja</option></select></div>
         <div class="field"><label for="auto_set_holidays">Feiertage automatisch setzen</label><select id="auto_set_holidays" name="auto_set_holidays"><option value="true">Ja</option><option value="false">Nein</option></select></div>
         <div class="field full"><label for="announcement_template">Ansagetext</label><textarea id="announcement_template" name="announcement_template" rows="5">{{ config.get('announcement_template','') }}</textarea></div>
         <div class="actions full">
@@ -45,25 +47,31 @@
     </div>
 
     <div class="card">
-      <h2>Debug</h2>
-      <p class="note">Hier siehst du, was die GUI aktuell von <code>/api/config</code> bekommt.</p>
+      <h2>Feiertage {{ year }}</h2>
+      <table>
+        <thead><tr><th>Datum</th><th>Wochentag</th><th>Name</th></tr></thead>
+        <tbody>
+          {% for h in holidays %}
+          <tr><td>{{ h.date }}</td><td>{{ h.weekday }}</td><td>{{ h.name }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Debug Config</h2>
       <pre id="debugConfig">lädt...</pre>
     </div>
   </div>
   <script>
-    const form = document.getElementById('configForm');
     const saveStatus = document.getElementById('saveStatus');
     const debugConfig = document.getElementById('debugConfig');
-    const reloadBtn = document.getElementById('reloadBtn');
-    const testBtn = document.getElementById('testBtn');
-
     function showStatus(ok, message){
       saveStatus.style.display='block';
       saveStatus.className='status ' + (ok ? 'ok' : 'err');
       saveStatus.textContent=message;
     }
-
-    function readForm(){
+    function payload(){
       return {
         cx_host: document.getElementById('cx_host').value,
         cx_username: document.getElementById('cx_username').value,
@@ -78,11 +86,10 @@
         phone_number: document.getElementById('phone_number').value,
         announcement_template: document.getElementById('announcement_template').value,
         auto_set_holidays: document.getElementById('auto_set_holidays').value === 'true',
-        verify_ssl: false
+        verify_ssl: document.getElementById('verify_ssl').value === 'true'
       };
     }
-
-    function fillForm(cfg){
+    function fill(cfg){
       document.getElementById('cx_host').value = cfg.cx_host || '';
       document.getElementById('cx_username').value = cfg.cx_username || '';
       document.getElementById('cx_password').value = cfg.cx_password || '';
@@ -96,51 +103,41 @@
       document.getElementById('phone_number').value = cfg.phone_number || '';
       document.getElementById('announcement_template').value = cfg.announcement_template || '';
       document.getElementById('auto_set_holidays').value = String(!!cfg.auto_set_holidays);
+      document.getElementById('verify_ssl').value = String(!!cfg.verify_ssl);
       debugConfig.textContent = JSON.stringify(cfg, null, 2);
     }
-
     async function loadConfig(){
-      const res = await fetch('/api/config');
-      if(!res.ok) throw new Error('Konfiguration konnte nicht geladen werden');
-      const cfg = await res.json();
-      fillForm(cfg);
+      const r = await fetch('/api/config');
+      if(!r.ok) throw new Error('Konfiguration konnte nicht geladen werden');
+      fill(await r.json());
     }
-
-    form.addEventListener('submit', async (e) => {
+    document.getElementById('configForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        const payload = readForm();
-        const res = await fetch('/api/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if(!res.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : 'Speichern fehlgeschlagen');
+        const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload())});
+        const data = await r.json();
+        if(!r.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : 'Speichern fehlgeschlagen');
         showStatus(true, 'Konfiguration gespeichert');
         await loadConfig();
-      } catch (err) {
-        showStatus(false, err.message || String(err));
+      } catch (e) {
+        showStatus(false, e.message || String(e));
       }
     });
-
-    reloadBtn.addEventListener('click', async () => {
+    document.getElementById('reloadBtn').addEventListener('click', async () => {
       try { await loadConfig(); showStatus(true, 'Konfiguration neu geladen'); }
-      catch (err) { showStatus(false, err.message || String(err)); }
+      catch (e) { showStatus(false, e.message || String(e)); }
     });
-
-    testBtn.addEventListener('click', async () => {
+    document.getElementById('testBtn').addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/test-connection', {method:'POST'});
-        const data = await res.json();
-        if(!res.ok) throw new Error(data.message || 'Verbindungstest fehlgeschlagen');
+        const r = await fetch('/api/test-connection', {method:'POST'});
+        const data = await r.json();
+        if(!r.ok) throw new Error(data.message || 'Verbindungstest fehlgeschlagen');
         showStatus(true, data.message + (data.version ? ' (' + data.version + ')' : ''));
-      } catch (err) {
-        showStatus(false, err.message || String(err));
+      } catch (e) {
+        showStatus(false, e.message || String(e));
       }
     });
-
-    loadConfig().catch(err => showStatus(false, err.message || String(err)));
+    loadConfig().catch(e => showStatus(false, e.message || String(e)));
   </script>
 </body>
 </html>

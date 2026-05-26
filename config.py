@@ -16,7 +16,10 @@ DEFAULTS = {
     "google_api_key": "",
     "company_name": "Tiag AG",
     "phone_number": "+41 44 315 55 99",
-    "announcement_template": "Sie haben {company} angerufen. Wir sind am {weekday}, {date} wegen {holiday} geschlossen. Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht.",
+    "announcement_template": (
+        "Sie haben {company} angerufen. Wir sind am {weekday}, den {date} wegen {holiday} geschlossen. "
+        "Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht."
+    ),
     "auto_set_holidays": True,
     "verify_ssl": False,
 }

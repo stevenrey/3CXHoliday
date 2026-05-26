@@ -11,32 +11,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from holidays_engine import get_holidays
+from tts_engine import generate_tts
+from cx_api import CXApi
 from config import load_config, save_config
-
-try:
-    from holidays_engine import get_holidays
-except Exception:
-    def get_holidays(region, year):
-        return []
-
-try:
-    from tts_engine import generate_tts
-except Exception:
-    def generate_tts(text, filepath, config):
-        return None
-
-try:
-    from cx_api import CXApi
-except Exception:
-    class CXApi:
-        def __init__(self, host, user, password):
-            self.host = host
-            self.user = user
-            self.password = password
-        def test_connection(self):
-            return {"message": "Mock-Verbindung erfolgreich", "version": "demo"}
-        def set_holiday(self, name, date_str, filename):
-            return True
 
 logging.basicConfig(
     filename="/var/log/3cx-holiday-importer.log",
@@ -45,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="3CX Holiday Importer", version="1.1.0")
+app = FastAPI(title="3CX Holiday Importer", version="2.0.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -65,7 +43,7 @@ class ConfigModel(BaseModel):
     google_api_key: Optional[str] = ""
     company_name: str = "Tiag AG"
     phone_number: str = "+41 44 315 55 99"
-    announcement_template: str = "Sie haben {company} angerufen. Wir sind am {weekday}, {date} wegen {holiday} geschlossen. Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht."
+    announcement_template: str = "Sie haben {company} angerufen. Wir sind am {weekday}, den {date} wegen {holiday} geschlossen. Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht."
     auto_set_holidays: bool = True
     verify_ssl: bool = False
 
@@ -83,6 +61,17 @@ async def index(request: Request):
         "config_path": os.environ.get("CONFIG_PATH", "/opt/3cx-holiday-importer/config.json")
     })
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "config_path": os.environ.get("CONFIG_PATH", "/opt/3cx-holiday-importer/config.json")}
+
+@app.get("/api/holidays")
+async def api_holidays(year: int = None, region: str = None):
+    config = load_config()
+    y = year or datetime.now().year
+    r = region or config.get("region", "CH-ZH")
+    return {"holidays": get_holidays(r, y), "year": y, "region": r}
+
 @app.get("/api/config")
 async def api_get_config():
     return load_config()
@@ -98,15 +87,26 @@ async def api_test_connection():
     cx_host = (config.get("cx_host") or "").strip()
     cx_username = (config.get("cx_username") or "").strip()
     cx_password = (config.get("cx_password") or "").strip()
-    if not cx_host or not cx_username or not cx_password:
-        return JSONResponse(status_code=400, content={"status": "error", "connected": False, "message": "Bitte Host, Benutzername und Passwort speichern."})
+    verify_ssl = bool(config.get("verify_ssl", False))
+    if not cx_host:
+        return JSONResponse(status_code=400, content={"status": "error", "connected": False, "message": "3CX Host fehlt in der Konfiguration"})
+    if not cx_username:
+        return JSONResponse(status_code=400, content={"status": "error", "connected": False, "message": "3CX Benutzername fehlt in der Konfiguration"})
+    if not cx_password:
+        return JSONResponse(status_code=400, content={"status": "error", "connected": False, "message": "3CX Passwort fehlt in der Konfiguration"})
     try:
-        api = CXApi(cx_host, cx_username, cx_password)
+        api = CXApi(cx_host, cx_username, cx_password, verify_ssl=verify_ssl)
         result = api.test_connection()
-        return {"status": "ok", "connected": True, "message": result.get("message", "Verbunden"), "version": result.get("version", "")}
+        return JSONResponse(content={"status": "ok", "connected": True, "message": result.get("message", "Verbunden"), "version": result.get("version", "")})
+    except ConnectionError as e:
+        return JSONResponse(status_code=503, content={"status": "error", "connected": False, "message": str(e)})
+    except TimeoutError as e:
+        return JSONResponse(status_code=504, content={"status": "error", "connected": False, "message": str(e)})
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"status": "error", "connected": False, "message": str(e)})
     except Exception as e:
         logger.exception("Fehler bei /api/test-connection")
-        return JSONResponse(status_code=500, content={"status": "error", "connected": False, "message": str(e)})
+        return JSONResponse(status_code=500, content={"status": "error", "connected": False, "message": f"Unerwarteter Fehler: {str(e)}"})
 
 @app.post("/api/sync")
 async def api_sync(req: SyncRequest, background_tasks: BackgroundTasks):
@@ -119,10 +119,6 @@ async def api_sync(req: SyncRequest, background_tasks: BackgroundTasks):
 async def api_logs(lines: int = 100):
     return {"logs": get_last_log_lines(lines)}
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "config_path": os.environ.get("CONFIG_PATH", "/opt/3cx-holiday-importer/config.json")}
-
 
 def get_last_log_lines(n=50):
     logfile = "/var/log/3cx-holiday-importer.log"
@@ -134,14 +130,14 @@ def get_last_log_lines(n=50):
 
 
 def run_sync(config: dict, year: int, dry_run: bool):
-    logger.info(f"Starte Sync für Jahr {year} (dry_run={dry_run})")
+    logger.info(f"Starte Sync fuer Jahr {year} (dry_run={dry_run})")
     region = config.get("region", "CH-ZH")
     holidays = get_holidays(region, year)
     prompt_path = config.get("prompt_path", "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts")
     for holiday in holidays:
-        name = holiday.get("name", "Holiday")
-        date_str = holiday.get("date", "")
-        weekday = holiday.get("weekday", "")
+        name = holiday["name"]
+        date_str = holiday["date"]
+        weekday = holiday["weekday"]
         text = config.get("announcement_template", "").format(
             company=config.get("company_name", ""),
             weekday=weekday,
@@ -151,16 +147,19 @@ def run_sync(config: dict, year: int, dry_run: bool):
         )
         filename = f"holiday_{date_str}_{name.replace(' ', '_').lower()}.wav"
         filepath = os.path.join(prompt_path, filename)
+        logger.info(f"Feiertag: {name} am {date_str} -> {filename}")
         if not dry_run:
             try:
                 generate_tts(text, filepath, config)
+                logger.info(f"TTS generiert: {filepath}")
             except Exception as e:
                 logger.error(f"TTS Fehler bei {name}: {e}")
                 continue
             if config.get("auto_set_holidays", True):
                 try:
-                    api = CXApi(config["cx_host"], config["cx_username"], config["cx_password"])
+                    api = CXApi(config["cx_host"], config["cx_username"], config["cx_password"], verify_ssl=bool(config.get("verify_ssl", False)))
                     api.set_holiday(name, date_str, filename)
+                    logger.info(f"3CX Holiday gesetzt: {name}")
                 except Exception as e:
                     logger.error(f"3CX API Fehler bei {name}: {e}")
-    logger.info(f"Sync abgeschlossen für {year}")
+    logger.info(f"Sync abgeschlossen fuer {year}")

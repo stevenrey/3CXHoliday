@@ -1,0 +1,14 @@
+[Unit]
+Description=3CX Holiday Importer
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/3cx-holiday-importer
+Environment=CONFIG_PATH=/opt/3cx-holiday-importer/config.json
+ExecStart=/opt/3cx-holiday-importer/venv/bin/uvicorn main:app --host 127.0.0.1 --port 5000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
