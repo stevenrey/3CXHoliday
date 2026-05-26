@@ -1,53 +1,55 @@
-# 3CX Holiday Importer for Linux
+# 3CX Holiday Importer
 
-Linux-native Holiday Importer für 3CX v20 mit FastAPI-Weboberfläche, regionalen Feiertagen, TTS via Piper oder Google und direkter 3CX-Integration.
+Automatische Feiertagsansagen für 3CX – Python/FastAPI Web-App.
 
-## Features
-- Feiertage für CH, AT und DE nach Region/Kanton/Bundesland.
-- Web-UI für Konfiguration, Vorschau, Diff und Sync.
-- Dry Run vor produktivem Schreiben.
-- Lokale TTS mit Piper oder optional Google Cloud TTS.
-- Audio-Preview direkt im Browser.
-- systemd-Service und Nginx-Reverse-Proxy.
-
-## Ordnerstruktur
-- `main.py` – FastAPI App
-- `config.py` – Laden/Speichern der Konfiguration
-- `holidays_engine.py` – Feiertage aus Python `holidays`
-- `tts_engine.py` – Piper/Google TTS
-- `cx_api.py` – 3CX API Wrapper
-- `templates/index.html` – Weboberfläche
-- `install.sh` – Linux Installer
-
-## Installation
+## Installation (Erstinstallation)
 ```bash
-chmod +x install.sh
+chmod +x install.sh update.sh
 sudo ./install.sh
 ```
 
-## Manuell starten
+## Update (bestehende Installation)
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-CONFIG_PATH=./config.json LOG_FILE=./holiday-importer.log uvicorn main:app --host 0.0.0.0 --port 3001
+sudo ./update.sh
 ```
 
+## Web-UI
+```
+https://tiagdemo.3cx.ch/holiday-importer/
+```
+
+## Ports
+- App läuft intern auf Port **5000**
+- Erreichbar via Nginx Reverse Proxy unter `/holiday-importer/`
+- Nginx Snippet: `/var/lib/3cxpbx/Bin/nginx/conf/snippets/holiday-importer.conf`
+
 ## Konfiguration
-Standardpfad für die Konfiguration:
-- `/etc/3cx-holiday-importer/config.json`
+- Config-Datei: `/etc/3cx-holiday-importer/config.json`
+- Oder direkt über die Web-UI
 
-Wichtige Felder:
-- `cxhost`
-- `cxusername`
-- `cxpassword`
-- `region`
-- `promptpath`
-- `ttsengine`
-- `piperbinary`
-- `pipermodel`
+## Logs
+```bash
+journalctl -u 3cx-holiday-importer -f
+cat /var/log/3cx-holiday-importer.log
+```
 
-## Hinweise
-- Die 3CX-Endpunkte können je nach v20 Build abweichen; der Wrapper ist absichtlich kompakt gehalten.
-- Piper wird bevorzugt, weil es lokal und offline auf Linux läuft.
-- Für erste Tests `autosetholidays=false` setzen und mit Dry Run starten.
+## Cronjob
+Läuft automatisch am 2. Januar 06:00 Uhr.
+Manuell triggern:
+```bash
+curl -X POST http://localhost:5000/api/sync -H "Content-Type: application/json" -d "{}"
+```
+
+## Prompt-Pfad auf 3CX-Server
+```
+/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts/
+```
+
+## Ansage-Template Platzhalter
+| Platzhalter | Beispiel        |
+|-------------|-----------------|
+| {company}   | Tiag AG         |
+| {weekday}   | Donnerstag      |
+| {date}      | 01.01.2026      |
+| {holiday}   | Neujahrstag     |
+| {phone}     | +41 44 315 55 99|
