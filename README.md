@@ -1,55 +1,37 @@
 # 3CX Holiday Importer
 
-Automatische Feiertagsansagen für 3CX – Python/FastAPI Web-App.
+Dieses Paket enthält eine bereinigte Version, bei der die Web-GUI die Konfiguration direkt über `/api/config` lädt und speichert.
 
-## Installation (Erstinstallation)
+## Enthaltene Fixes
+
+- `config.py` nutzt standardmäßig `/opt/3cx-holiday-importer/config.json`
+- Einheitliche Feldnamen mit Unterstrichen, z. B. `cx_host`, `company_name`, `auto_set_holidays`
+- Web-GUI lädt die Config beim Öffnen per `GET /api/config`
+- Web-GUI speichert per `POST /api/config`
+- Debug-Block zeigt die aktuell vom Backend geladene Config an
+- `/health` zeigt den aktiven `CONFIG_PATH`
+
+## Deployment
+
+1. Dateien nach `/opt/3cx-holiday-importer/` kopieren.
+2. In der systemd-Datei setzen:
+
+```ini
+Environment=CONFIG_PATH=/opt/3cx-holiday-importer/config.json
+WorkingDirectory=/opt/3cx-holiday-importer
+```
+
+3. Danach:
+
 ```bash
-chmod +x install.sh update.sh
-sudo ./install.sh
+sudo systemctl daemon-reload
+sudo systemctl restart 3cx-holiday-importer
 ```
 
-## Update (bestehende Installation)
+## Test
+
 ```bash
-sudo ./update.sh
+curl -i -X POST http://127.0.0.1:5000/api/config \
+  -H "Content-Type: application/json" \
+  --data-binary @/opt/3cx-holiday-importer/config.json
 ```
-
-## Web-UI
-```
-https://tiagdemo.3cx.ch/holiday-importer/
-```
-
-## Ports
-- App läuft intern auf Port **5000**
-- Erreichbar via Nginx Reverse Proxy unter `/holiday-importer/`
-- Nginx Snippet: `/var/lib/3cxpbx/Bin/nginx/conf/snippets/holiday-importer.conf`
-
-## Konfiguration
-- Config-Datei: `/etc/3cx-holiday-importer/config.json`
-- Oder direkt über die Web-UI
-
-## Logs
-```bash
-journalctl -u 3cx-holiday-importer -f
-cat /var/log/3cx-holiday-importer.log
-```
-
-## Cronjob
-Läuft automatisch am 2. Januar 06:00 Uhr.
-Manuell triggern:
-```bash
-curl -X POST http://localhost:5000/api/sync -H "Content-Type: application/json" -d "{}"
-```
-
-## Prompt-Pfad auf 3CX-Server
-```
-/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts/
-```
-
-## Ansage-Template Platzhalter
-| Platzhalter | Beispiel        |
-|-------------|-----------------|
-| {company}   | Tiag AG         |
-| {weekday}   | Donnerstag      |
-| {date}      | 01.01.2026      |
-| {holiday}   | Neujahrstag     |
-| {phone}     | +41 44 315 55 99|
