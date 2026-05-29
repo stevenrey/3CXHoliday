@@ -103,7 +103,14 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
     prompt_path = config.get("prompt_path", "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts")
 
     api = None
-    if not dry_run and config.get("auto_set_holidays", True):
+    should_write_3cx = bool(config.get("auto_set_holidays", True))
+    if not dry_run and not should_write_3cx:
+        logger.error("3CX Holiday-Erstellung ist deaktiviert. Checkbox 'Feiertage automatisch in 3CX setzen' aktivieren.")
+        return
+    if not dry_run and not config.get("cx_department_id"):
+        logger.error("Kein Department ausgewaehlt. Bitte Department laden und auswaehlen.")
+        return
+    if not dry_run:
         api = CXApi(
             config.get("cx_host", ""),
             config.get("cx_username", ""),
@@ -124,14 +131,13 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
 
         try:
             generate_tts(text, filepath, config)
-            if api:
-                result = api.set_holiday(
-                    holiday["name"],
-                    holiday["date"],
-                    holiday["filename"],
-                    config.get("cx_department_id", ""),
-                )
-                logger.info("3CX Holiday erstellt: %s", result.get("payload", {}))
+            result = api.set_holiday(
+                holiday["name"],
+                holiday["date"],
+                holiday["filename"],
+                config.get("cx_department_id", ""),
+            )
+            logger.info("3CX Holiday erstellt: %s", result.get("payload", {}))
             ok_count += 1
         except Exception as exc:
             logger.exception("Fehler bei %s: %s", holiday["name"], exc)
@@ -161,11 +167,15 @@ async def index(request: Request):
 @app.get("/health")
 @app.get("/api/health")
 async def api_health():
+    config = load_config()
     return {
         "status": "ok",
         "version": app.version,
         "root_path": ROOT_PATH,
-        "piper": check_piper_available(load_config()),
+        "piper": check_piper_available(config),
+        "auto_set_holidays": bool(config.get("auto_set_holidays", True)),
+        "department_id": config.get("cx_department_id", ""),
+        "department_name": config.get("cx_department_name", ""),
     }
 
 
