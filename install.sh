@@ -7,6 +7,7 @@ BRANCH="${BRANCH:-main}"
 SERVICE_FILE="/etc/systemd/system/3cx-holiday-importer.service"
 NGINX_SNIPPET="/etc/nginx/snippets/3cx-holiday-importer-location.conf"
 NGINX_INCLUDE="include ${NGINX_SNIPPET};"
+NGINX_BACKUP_DIR="/root/3cx-holiday-importer-nginx-backups"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Bitte als root ausfuehren, z.B. mit sudo." >&2
@@ -47,6 +48,7 @@ systemctl restart 3cx-holiday-importer
 
 echo "==> Nginx Location /holiday-import einrichten"
 mkdir -p /etc/nginx/snippets
+mkdir -p "${NGINX_BACKUP_DIR}"
 cat > "${NGINX_SNIPPET}" <<'NGINX'
 location = /holiday-import {
     return 301 /holiday-import/;
@@ -63,13 +65,14 @@ location /holiday-import/ {
 }
 NGINX
 
-python3 - "$NGINX_SNIPPET" "$NGINX_INCLUDE" <<'PY'
+python3 - "$NGINX_SNIPPET" "$NGINX_INCLUDE" "$NGINX_BACKUP_DIR" <<'PY'
 import pathlib
 import re
 import sys
 
 snippet = pathlib.Path(sys.argv[1])
 include_line = sys.argv[2]
+backup_dir = pathlib.Path(sys.argv[3])
 paths = []
 for base in (pathlib.Path("/etc/nginx/sites-enabled"), pathlib.Path("/etc/nginx/conf.d"), pathlib.Path("/etc/nginx")):
     if base.exists():
@@ -101,7 +104,7 @@ for path in paths:
         sys.exit(0)
     end = find_ssl_server_end(text)
     if end is not None:
-        backup = path.with_suffix(path.suffix + ".bak-holiday-import")
+        backup = backup_dir / f"{path.name}.bak-holiday-import"
         backup.write_text(text, encoding="utf-8")
         new_text = text[:end] + f"\n    {include_line}\n" + text[end:]
         path.write_text(new_text, encoding="utf-8")
