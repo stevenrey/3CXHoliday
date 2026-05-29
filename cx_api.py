@@ -2,6 +2,7 @@ from datetime import date
 import base64
 import json
 from pathlib import Path
+import time
 
 import requests
 
@@ -259,10 +260,20 @@ class CXApi:
         self._xapi_delete(f"CustomPrompts('{prompt_name}')", allow_missing=True)
 
         url = f"{self.host}/xapi/v1/customPrompts"
+        boundary = f"----3CXSyncBoundary{int(time.time() * 1000)}"
+        preamble = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{prompt_name}"\r\n'
+            "Content-Type: audio/wav\r\n\r\n"
+        ).encode("utf-8")
+        closing = f"\r\n--{boundary}--\r\n".encode("utf-8")
+        body = b"".join([preamble, wav_data, closing])
         headers = self._auth_headers()
         headers.update(
             {
                 "Accept": "application/json, text/plain, */*",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body)),
                 "ngsw-bypass": "bypass",
                 "Cache-Control": "no-store",
                 "Pragma": "no-cache",
@@ -272,7 +283,7 @@ class CXApi:
             response = requests.post(
                 url,
                 headers=headers,
-                files={"file": (prompt_name, wav_data, "audio/wav")},
+                data=body,
                 timeout=60,
                 verify=self.verify_ssl,
             )
