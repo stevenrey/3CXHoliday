@@ -164,9 +164,14 @@
 
       <section class="card full">
         <h2>Vorschau</h2>
+        <div class="hint" id="diffHint">Noch keine Vorschau geladen.</div>
+        <div class="actions">
+          <button class="secondary" onclick="setPreviewSelection(true)">Alle neuen auswahlen</button>
+          <button class="secondary" onclick="setPreviewSelection(false)">Alle abwaehlen</button>
+        </div>
         <table>
-          <thead><tr><th>Datum</th><th>Feiertag</th><th>Datei</th><th>Audio</th><th>Aktion</th></tr></thead>
-          <tbody id="diffRows"><tr><td colspan="5" class="hint">Noch keine Vorschau geladen.</td></tr></tbody>
+          <thead><tr><th>Sync</th><th>Datum</th><th>Feiertag</th><th>Datei</th><th>Audio</th><th>3CX</th><th>Aktion</th></tr></thead>
+          <tbody id="diffRows"><tr><td colspan="7" class="hint">Noch keine Vorschau geladen.</td></tr></tbody>
         </table>
       </section>
 
@@ -234,15 +239,37 @@
     }
 
     async function showDiff() {
+      await saveConfig();
       const resp = await fetch(api("/api/diff"), {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({year: parseInt(qs("year").value, 10), dry_run: true})
       });
       const data = await resp.json();
+      qs("diffHint").textContent = `Department: ${data.department_name || data.department_id || "nicht gewaehlt"} · vorhandene Feiertage: ${(data.existing_holidays || []).length} · Quelle: ${data.cx_source}`;
       qs("diffRows").innerHTML = data.diff.map((h) => `
-        <tr><td>${h.date_display}</td><td>${h.name}</td><td class="mono">${h.filename}</td><td>${h.audio_exists ? "vorhanden" : "neu"}</td><td>${h.action}</td></tr>
+        <tr>
+          <td><input class="sync-day" type="checkbox" value="${escapeHtml(h.date)}" ${h.selected ? "checked" : ""} ${h.cx_exists ? "disabled" : ""} style="width:auto;"></td>
+          <td>${h.date_display}</td>
+          <td>${escapeHtml(h.name)}</td>
+          <td class="mono">${escapeHtml(h.filename)}</td>
+          <td>${h.audio_exists ? "vorhanden" : "neu"}</td>
+          <td>${h.cx_exists ? "vorhanden" : "nicht vorhanden"}</td>
+          <td>${h.action}</td>
+        </tr>
       `).join("");
+    }
+
+    function selectedSyncDates() {
+      const boxes = Array.from(document.querySelectorAll(".sync-day"));
+      if (!boxes.length) return null;
+      return boxes.filter((input) => input.checked).map((input) => input.value);
+    }
+
+    function setPreviewSelection(checked) {
+      document.querySelectorAll(".sync-day:not(:disabled)").forEach((input) => {
+        input.checked = checked;
+      });
     }
 
     async function saveConfig() {
@@ -305,11 +332,16 @@
         const resp = await fetch(api("/api/sync"), {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({year: parseInt(qs("year").value, 10), dry_run: dryRun})
+          body: JSON.stringify({
+            year: parseInt(qs("year").value, 10),
+            dry_run: dryRun,
+            selected_dates: selectedSyncDates()
+          })
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.detail || "Start fehlgeschlagen");
-        status(box, "ok", `${dryRun ? "Dry Run" : "Sync"} fuer ${data.year} gestartet.`);
+        const countText = data.selected_count === null ? "alle Tage" : `${data.selected_count} Tage`;
+        status(box, "ok", `${dryRun ? "Dry Run" : "Sync"} fuer ${data.year} gestartet (${countText}).`);
         setTimeout(loadLogs, 1500);
       } catch (error) {
         status(box, "err", error.message);

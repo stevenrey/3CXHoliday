@@ -35,6 +35,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 class SyncRequest(BaseModel):
     year: Optional[int] = None
     dry_run: bool = False
+    selected_dates: Optional[list[str]] = None
 
 
 class ConfigModel(BaseModel):
@@ -93,9 +94,12 @@ def build_announcement(holiday: dict, config: dict) -> str:
     )
 
 
-def run_sync(config: dict, year: int, dry_run: bool) -> None:
+def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] | None = None) -> None:
     logger.info("Starte Sync fuer Jahr %s (dry_run=%s)", year, dry_run)
     holidays = get_holidays(config.get("region", "CH-ZH"), year)
+    selected = set(selected_dates or [])
+    if selected_dates is not None:
+        holidays = [holiday for holiday in holidays if holiday["date"] in selected]
     prompt_path = config.get("prompt_path", "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts")
 
     api = None
@@ -250,28 +254,64 @@ async def api_diff(request: SyncRequest):
     year = request.year or datetime.now().year
     holidays = get_holidays(config.get("region", "CH-ZH"), year)
     prompt_path = config.get("prompt_path", "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts")
+    department_id = config.get("cx_department_id", "")
+    cx_holidays = []
+    cx_source = "not_loaded"
+    if department_id:
+        try:
+            api = CXApi(
+                config.get("cx_host", ""),
+                config.get("cx_username", ""),
+                config.get("cx_password", ""),
+                config.get("verify_ssl", False),
+                config.get("cx_xapi_token", ""),
+            )
+            existing = api.get_department_holidays(department_id)
+            cx_holidays = existing.get("holidays", [])
+            cx_source = existing.get("source", "unknown")
+        except Exception as exc:
+            logger.warning("Bestehende 3CX Feiertage konnten nicht geladen werden: %s", exc)
+            cx_source = f"error: {exc}"
+
+    existing_dates = {holiday.get("date", "") for holiday in cx_holidays}
 
     diff = []
     for holiday in holidays:
         filepath = os.path.join(prompt_path, holiday["filename"])
+        cx_exists = holiday["date"] in existing_dates
         diff.append(
             {
                 **holiday,
                 "text": build_announcement(holiday, config),
                 "audio_exists": os.path.exists(filepath),
-                "cx_exists": False,
-                "action": "update_audio" if os.path.exists(filepath) else "create",
+                "cx_exists": cx_exists,
+                "selected": not cx_exists,
+                "action": "skip" if cx_exists else ("update_audio" if os.path.exists(filepath) else "create"),
             }
         )
-    return {"diff": diff, "year": year, "region": config.get("region", "CH-ZH"), "total": len(diff)}
+    return {
+        "diff": diff,
+        "existing_holidays": cx_holidays,
+        "cx_source": cx_source,
+        "department_id": department_id,
+        "department_name": config.get("cx_department_name", ""),
+        "year": year,
+        "region": config.get("region", "CH-ZH"),
+        "total": len(diff),
+    }
 
 
 @app.post("/api/sync")
 async def api_sync(request: SyncRequest, background_tasks: BackgroundTasks):
     config = load_config()
     year = request.year or datetime.now().year
-    background_tasks.add_task(run_sync, config, year, request.dry_run)
-    return {"status": "started", "year": year, "dry_run": request.dry_run}
+    background_tasks.add_task(run_sync, config, year, request.dry_run, request.selected_dates)
+    return {
+        "status": "started",
+        "year": year,
+        "dry_run": request.dry_run,
+        "selected_count": None if request.selected_dates is None else len(request.selected_dates),
+    }
 
 
 @app.post("/api/tts-preview")
