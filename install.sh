@@ -109,7 +109,7 @@ for path in paths:
         sys.exit(0)
 
 print("Kein bestehender SSL server{} Block in /etc/nginx/sites-enabled oder /etc/nginx/conf.d gefunden.", file=sys.stderr)
-print(f"Bitte manuell in den bestehenden HTTPS server{} Block einfuegen: {include_line}", file=sys.stderr)
+print(f"Bitte manuell in den bestehenden HTTPS server{{}} Block einfuegen: {include_line}", file=sys.stderr)
 sys.exit(1)
 PY
 
