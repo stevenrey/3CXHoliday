@@ -1,39 +1,61 @@
-# 3CX Holiday Importer Clean Package
+# 3CX Holiday Importer
 
-Sauberes Neuaufsetzen des Projekts mit konsistenten Config-Keys und funktionierender Web-GUI.
+FastAPI-GUI zum Erzeugen von Feiertagsansagen fuer 3CX. Die App wird lokal auf dem 3CX-Server unter `127.0.0.1:5000` betrieben und ueber den bestehenden Nginx unter `/holiday-import/` veroeffentlicht.
 
-## Inhalte
+## Installation auf der 3CX
 
-- FastAPI App (`main.py`)
-- GUI (`templates/index.html`)
-- Konfiguration (`config.py`)
-- Feiertagslogik (`holidays_engine.py`)
-- TTS Wrapper (`tts_engine.py`)
-- 3CX API Test (`cx_api.py`)
-- `requirements.txt`
-- systemd Beispielservice
-- `install.sh`
-
-## Empfohlene Neuinstallation
-
-1. Repo nach Git hochladen.
-2. Server sauber vorbereiten.
-3. Neu clonen nach `/opt/3cx-holiday-importer`.
-4. `python3 -m venv venv`
-5. `pip install -r requirements.txt`
-6. Service-Datei nach `/etc/systemd/system/3cx-holiday-importer.service` kopieren.
-7. `systemctl daemon-reload && systemctl enable --now 3cx-holiday-importer`
-
-## Test
+Auf dem 3CX-Server als Benutzer mit sudo-Rechten ausfuehren:
 
 ```bash
-curl http://127.0.0.1:5000/health
-curl http://127.0.0.1:5000/api/config
+curl -fsSL https://raw.githubusercontent.com/stevenrey/3CXHoliday/main/install.sh | sudo bash
 ```
+
+Danach ist die GUI erreichbar unter:
+
+```text
+https://<3cx-host>/holiday-import/
+```
+
+Healthcheck:
+
+```text
+https://<3cx-host>/holiday-import/api/health
+```
+
+## Was der Installer macht
+
+- installiert `git`, `python3`, `python3-venv`, `python3-pip` und `nginx`
+- clont oder aktualisiert das Repo nach `/opt/3cx-holiday-importer`
+- erstellt ein Python-Venv und installiert `requirements.txt`
+- installiert den systemd-Service `3cx-holiday-importer`
+- startet Uvicorn lokal auf `127.0.0.1:5000`
+- erstellt ein Nginx-Snippet fuer `/holiday-import/`
+- bindet dieses Snippet in den bestehenden HTTPS-Serverblock ein
+- verwendet dadurch das vorhandene SSL-Zertifikat des bestehenden Nginx weiter
+
+Der Installer erstellt kein neues Zertifikat und keinen separaten HTTPS-VHost.
 
 ## Wichtige Pfade
 
 - App: `/opt/3cx-holiday-importer`
 - Config: `/opt/3cx-holiday-importer/config.json`
-- Venv: `/opt/3cx-holiday-importer/venv`
 - Service: `/etc/systemd/system/3cx-holiday-importer.service`
+- Nginx Location: `/etc/nginx/snippets/3cx-holiday-importer-location.conf`
+- Log: `/var/log/3cx-holiday-importer.log`
+
+## Betrieb
+
+```bash
+sudo systemctl status 3cx-holiday-importer
+sudo journalctl -u 3cx-holiday-importer -f
+sudo tail -f /var/log/3cx-holiday-importer.log
+sudo nginx -t
+```
+
+## Update
+
+Der gleiche Installationsbefehl kann erneut ausgefuehrt werden. Wenn `/opt/3cx-holiday-importer` bereits ein Git-Checkout ist, wird `main` per `git pull --ff-only` aktualisiert.
+
+## Hinweis zur 3CX API
+
+Der Verbindungstest ist implementiert. Das eigentliche Setzen von Feiertagen in 3CX ist in `cx_api.py` aktuell noch als Stub vorbereitet und muss gegen die konkrete 3CX-v20-API vervollstaendigt werden.

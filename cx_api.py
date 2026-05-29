@@ -27,3 +27,6 @@ class CXApi:
 
     def set_holiday(self, name: str, date_str: str, filename: str):
         return {"status": "not_implemented", "name": name, "date": date_str, "file": filename}
+
+    def get_holidays(self):
+        return []

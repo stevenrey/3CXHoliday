@@ -4,6 +4,18 @@ import wave
 from pathlib import Path
 
 
+def check_piper_available(config: dict):
+    binary = config.get("piper_binary", "/opt/piper/piper")
+    model = config.get("piper_model", "")
+    return {
+        "binary": binary,
+        "model": model,
+        "binary_exists": os.path.exists(binary),
+        "model_exists": bool(model) and os.path.exists(model),
+        "available": os.path.exists(binary) and bool(model) and os.path.exists(model),
+    }
+
+
 def _write_dummy_wav(filepath: str):
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
     with wave.open(filepath, "w") as wav:

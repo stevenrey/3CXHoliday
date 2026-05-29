@@ -1,684 +1,306 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3CX Holiday Importer</title>
   <style>
     :root {
-      --bg: #f7f6f2;
+      --bg: #f5f6f4;
       --surface: #ffffff;
-      --surface-2: #fbfbf9;
-      --border: #dcd9d5;
-      --text: #28251d;
-      --muted: #7a7974;
-      --primary: #01696f;
-      --primary-hover: #0c4e54;
-      --success: #437a22;
-      --error: #a12c7b;
-      --warning: #964219;
-      --radius: 10px;
-      --shadow: 0 4px 12px rgba(0,0,0,.08);
+      --line: #d9ded8;
+      --text: #20241f;
+      --muted: #687064;
+      --primary: #006a68;
+      --primary-dark: #064f4e;
+      --ok: #316b35;
+      --err: #a02f4f;
+      --warn: #8a5a15;
     }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
-    header { background: var(--primary); color:#fff; padding:20px 28px; display:flex; justify-content:space-between; align-items:center; gap:16px; }
-    header h1 { margin:0; font-size:22px; }
-    header small { opacity:.85; display:block; margin-top:4px; }
-    .wrap { max-width: 1220px; margin: 0 auto; padding: 24px; }
-    .grid { display:grid; grid-template-columns: 1.1fr .9fr; gap:24px; }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+    header { background: var(--primary); color: #fff; padding: 18px 28px; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+    h1 { margin: 0; font-size: 22px; }
+    h2 { margin: 0 0 14px; font-size: 17px; color: var(--primary-dark); }
+    small, .hint { color: var(--muted); font-size: 13px; }
+    header small { color: rgba(255,255,255,.82); display: block; margin-top: 3px; }
+    main { max-width: 1220px; margin: 0 auto; padding: 22px; }
+    .grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 18px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
     .full { grid-column: 1 / -1; }
-    h2 { margin:0 0 14px 0; font-size:18px; color:var(--primary); }
-    .row { display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
-    .field { flex:1; min-width:180px; }
-    label { display:block; font-size:13px; color:var(--muted); margin:10px 0 6px; }
-    input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); font:inherit; color:var(--text); }
-    textarea { min-height: 110px; resize: vertical; }
-    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
-    .btn { border:0; border-radius:8px; padding:10px 16px; cursor:pointer; font-weight:600; }
-    .btn-primary { background:var(--primary); color:#fff; }
-    .btn-primary:hover { background:var(--primary-hover); }
-    .btn-secondary { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
-    .btn-secondary:hover { background:#efede8; }
-    .status { display:none; margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px; }
-    .status.ok { display:block; background:#d4dfcc; color:var(--success); }
-    .status.err { display:block; background:#e0ced7; color:var(--error); }
-    .status.info { display:block; background:#cedcd8; color:var(--primary); }
-    table { width:100%; border-collapse: collapse; font-size:14px; }
-    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--border); vertical-align: top; }
-    th { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
-    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; background:#cedcd8; color:var(--primary-hover); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--muted); }
-    pre { background:#1c1b19; color:#cdccca; border-radius:8px; padding:14px; overflow:auto; max-height:280px; white-space:pre-wrap; }
-    .pill-ok,.pill-warn,.pill-skip { font-size:12px; font-weight:700; border-radius:999px; padding:3px 8px; display:inline-block; }
-    .pill-ok { background:#d4dfcc; color:var(--success); }
-    .pill-warn { background:#e7d7c4; color:var(--warning); }
-    .pill-skip { background:#edeae5; color:var(--muted); }
-    .hint { color:var(--muted); font-size:13px; }
-    audio { width:100%; margin-top:10px; }
-    @media (max-width: 900px) { .grid { grid-template-columns:1fr; } }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    .field { flex: 1; min-width: 180px; }
+    label { display: block; margin: 10px 0 5px; color: var(--muted); font-size: 13px; }
+    input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; font: inherit; color: var(--text); background: #fbfcfb; }
+    textarea { min-height: 104px; resize: vertical; }
+    button { border: 0; border-radius: 6px; padding: 9px 13px; font-weight: 650; cursor: pointer; }
+    .primary { background: var(--primary); color: #fff; }
+    .primary:hover { background: var(--primary-dark); }
+    .secondary { background: #eef2ed; color: var(--text); border: 1px solid var(--line); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; background: #d9ebe6; color: var(--primary-dark); font-size: 12px; font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; color: var(--muted); }
+    .status { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 14px; }
+    .status.ok { display: block; background: #e1f1de; color: var(--ok); }
+    .status.err { display: block; background: #f5dce4; color: var(--err); }
+    .status.info { display: block; background: #dceceb; color: var(--primary-dark); }
+    pre { margin: 0; background: #171b1a; color: #dce4df; padding: 13px; border-radius: 6px; max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+    audio { width: 100%; margin-top: 10px; }
+    @media (max-width: 900px) { header { align-items: flex-start; flex-direction: column; } .grid { grid-template-columns: 1fr; } }
   </style>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3CX Holiday Importer</title>
-<style>
-  :root {
-    --bg: #f7f6f2; --surface: #fff; --border: #dcd9d5;
-    --primary: #01696f; --primary-hover: #0c4e54;
-    --text: #28251d; --muted: #7a7974;
-    --success: #437a22; --error: #a12c7b; --warning: #964219;
-    --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,.08);
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
-  header { background: var(--primary); color: #fff; padding: 16px 32px; display:flex; align-items:center; gap:12px; }
-  header h1 { font-size: 20px; font-weight: 600; }
-  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
-  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--primary); display:flex; align-items:center; gap:8px; }
-  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
-  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); }
-  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
-  textarea { resize: vertical; min-height: 80px; }
-  .btn { display: inline-flex; align-items:center; gap:6px; padding: 9px 18px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: background .15s; }
-  .btn-primary { background: var(--primary); color: #fff; }
-  .btn-primary:hover { background: var(--primary-hover); }
-  .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: var(--border); }
-  .btn-sm { padding: 6px 12px; font-size: 13px; }
-  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--bg); }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; background: #cedcd8; color: var(--primary-hover); }
-  .status-msg { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-top: 12px; display: none; }
-  .status-msg.ok  { background: #d4dfcc; color: var(--success); display: block; }
-  .status-msg.err { background: #e0ced7; color: var(--error); display: block; }
-  .status-msg.info{ background: #cedcd8; color: var(--primary); display: block; }
-  pre { background: #1c1b19; color: #cdccca; padding: 16px; border-radius: 6px; font-size: 12px; overflow-x: auto; max-height: 220px; overflow-y: auto; margin-top: 8px; white-space: pre-wrap; }
-  .full-width { grid-column: 1 / -1; }
-  .year-row { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-  .year-row label { margin:0; font-size:14px; }
-  .year-row input { width: 90px; }
-
-  /* ── Verbindungs-Status-Indikator ── */
-  .cx-status {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500;
-    border: 1px solid var(--border); background: var(--bg); cursor: pointer;
-    transition: all .2s; user-select: none;
-  }
-  .cx-status:hover { background: var(--border); }
-  .cx-dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-    background: #bab9b4; transition: background .3s;
-  }
-  .cx-status.checking .cx-dot { background: #d19900; animation: pulse 1s infinite; }
-  .cx-status.connected .cx-dot { background: var(--success); animation: none; }
-  .cx-status.disconnected .cx-dot { background: var(--error); animation: none; }
-  .cx-status.connected { border-color: #d4dfcc; background: #f0f5ec; }
-  .cx-status.disconnected { border-color: #e0ced7; background: #faf0f5; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
-</style>
 </head>
 <body>
   <header>
     <div>
       <h1>3CX Holiday Importer</h1>
-      <small>Linux-native, FastAPI, Piper/Google TTS, besserer Workflow für 3CX v20</small>
+      <small>Erreichbar unter {{ base_path }} · Jahr {{ year }} · Region {{ config.region }}</small>
     </div>
-    <div class="hint">Jahr {{ year }} · Region {{ config.region }}</div>
+    <button class="secondary" onclick="testConnection()">3CX testen</button>
   </header>
-<header>
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-    <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-    <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
-  </svg>
-  <h1>3CX Holiday Importer</h1>
-</header>
 
-  <main class="wrap">
+  <main>
     <div class="grid">
       <section class="card full">
         <h2>Feiertage</h2>
         <div class="row">
-          <div class="field" style="max-width:120px;">
-            <label>Jahr</label>
-            <input type="number" id="year" value="{{ year }}" min="2024" max="2035" />
+          <div class="field" style="max-width: 140px;">
+            <label for="year">Jahr</label>
+            <input id="year" type="number" min="2024" max="2035" value="{{ year }}">
           </div>
           <div class="field">
-            <label>Region</label>
+            <label for="region">Region</label>
             <select id="region">
               {% for group in regions %}
-                <optgroup label="{{ group.group }}">
-                  {% for opt in group.options %}
-                    <option value="{{ opt.value }}" {% if config.region == opt.value %}selected{% endif %}>{{ opt.label }}</option>
-                  {% endfor %}
-                </optgroup>
+              <optgroup label="{{ group.group }}">
+                {% for option in group.options %}
+                <option value="{{ option.value }}" {% if config.region == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </optgroup>
               {% endfor %}
             </select>
           </div>
         </div>
         <div class="actions">
-          <button class="btn btn-secondary" onclick="loadHolidays()">Aktualisieren</button>
-          <button class="btn btn-secondary" onclick="showDiff()">Diff / Vorschau</button>
-          <button class="btn btn-primary" onclick="startSync(false)">Sync starten</button>
-          <button class="btn btn-secondary" onclick="startSync(true)">Dry Run</button>
-          <button class="btn btn-secondary" onclick="testConnection()">3CX testen</button>
+          <button class="secondary" onclick="loadHolidays()">Aktualisieren</button>
+          <button class="secondary" onclick="showDiff()">Vorschau</button>
+          <button class="secondary" onclick="startSync(true)">Dry Run</button>
+          <button class="primary" onclick="startSync(false)">Sync starten</button>
         </div>
         <div id="syncStatus" class="status"></div>
-        <table id="holidayTable" style="margin-top:16px;">
-          <thead>
-            <tr>
-              <th>Datum</th>
-              <th>Wochentag</th>
-              <th>Feiertag</th>
-              <th>Datei</th>
-            </tr>
-          </thead>
-          <tbody>
+        <table style="margin-top: 14px;">
+          <thead><tr><th>Datum</th><th>Wochentag</th><th>Feiertag</th><th>Datei</th></tr></thead>
+          <tbody id="holidayRows">
             {% for h in holidays %}
-            <tr>
-              <td>{{ h.date }}</td>
-              <td>{{ h.weekday }}</td>
-              <td><span class="badge">{{ h.name }}</span></td>
-              <td class="mono">{{ h.filename }}</td>
-            </tr>
+            <tr><td>{{ h.date_display }}</td><td>{{ h.weekday }}</td><td><span class="badge">{{ h.name }}</span></td><td class="mono">{{ h.filename }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </section>
-<div class="container">
-  <div class="grid">
 
       <section class="card">
         <h2>3CX Verbindung</h2>
-        <label>3CX Host URL</label>
-        <input type="text" id="cxhost" value="{{ config.cxhost }}" placeholder="https://localhost:5001" />
-        <label>Benutzername</label>
-        <input type="text" id="cxusername" value="{{ config.cxusername }}" />
-        <label>Passwort</label>
-        <input type="password" id="cxpassword" value="{{ config.cxpassword }}" />
-        <label>Prompt-Pfad auf Server</label>
-        <input type="text" id="promptpath" value="{{ config.promptpath }}" />
-        <label>Region</label>
-        <select id="cfgregion"></select>
-        <label style="display:flex; align-items:center; gap:8px; margin-top:16px;">
-          <input type="checkbox" id="autosetholidays" {% if config.autosetholidays %}checked{% endif %} style="width:auto;" />
-          Feiertage automatisch in 3CX setzen
-        </label>
-        <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-          <input type="checkbox" id="verify_ssl" {% if config.verify_ssl %}checked{% endif %} style="width:auto;" />
-          SSL-Zertifikat prüfen
-        </label>
+        <label for="cx_host">3CX Host URL</label>
+        <input id="cx_host" value="{{ config.cx_host }}">
+        <label for="cx_username">Benutzername</label>
+        <input id="cx_username" value="{{ config.cx_username }}">
+        <label for="cx_password">Passwort</label>
+        <input id="cx_password" type="password" value="{{ config.cx_password }}">
+        <label for="prompt_path">Prompt-Pfad</label>
+        <input id="prompt_path" value="{{ config.prompt_path }}">
+        <label><input id="auto_set_holidays" type="checkbox" {% if config.auto_set_holidays %}checked{% endif %} style="width:auto;"> Feiertage automatisch in 3CX setzen</label>
+        <label><input id="verify_ssl" type="checkbox" {% if config.verify_ssl %}checked{% endif %} style="width:auto;"> SSL-Zertifikat der 3CX API pruefen</label>
+        <div id="connStatus" class="status"></div>
       </section>
 
       <section class="card">
         <h2>TTS & Ansage</h2>
-        <label>TTS Engine</label>
-        <select id="ttsengine" onchange="toggleTTS()">
-          <option value="piper" {% if config.ttsengine == 'piper' %}selected{% endif %}>Piper lokal</option>
-          <option value="google" {% if config.ttsengine == 'google' %}selected{% endif %}>Google Cloud TTS</option>
-    <!-- Feiertage -->
-    <div class="card full-width">
-      <h2>Feiertage</h2>
-      <div class="year-row">
-        <label>Jahr:</label>
-        <input type="number" id="year" value="{{ year }}" min="2024" max="2035">
-        <select id="region">
-          <optgroup label="Schweiz">
-            <option value="CH-ZH" {% if config.region == 'CH-ZH' %}selected{% endif %}>Zürich (ZH)</option>
-            <option value="CH-BE" {% if config.region == 'CH-BE' %}selected{% endif %}>Bern (BE)</option>
-            <option value="CH-AG" {% if config.region == 'CH-AG' %}selected{% endif %}>Aargau (AG)</option>
-            <option value="CH-BS" {% if config.region == 'CH-BS' %}selected{% endif %}>Basel-Stadt (BS)</option>
-            <option value="CH-SG" {% if config.region == 'CH-SG' %}selected{% endif %}>St. Gallen (SG)</option>
-            <option value="CH-TI" {% if config.region == 'CH-TI' %}selected{% endif %}>Tessin (TI)</option>
-          </optgroup>
-          <optgroup label="Österreich">
-            <option value="AT" {% if config.region == 'AT' %}selected{% endif %}>Österreich</option>
-          </optgroup>
-          <optgroup label="Deutschland">
-            <option value="DE" {% if config.region == 'DE' %}selected{% endif %}>Deutschland</option>
-            <option value="DE-BY" {% if config.region == 'DE-BY' %}selected{% endif %}>Bayern</option>
-            <option value="DE-BW" {% if config.region == 'DE-BW' %}selected{% endif %}>Baden-Württemberg</option>
-          </optgroup>
-</select>
-        <div id="pipersettings">
-          <label>Piper Binary</label>
-          <input type="text" id="piperbinary" value="{{ config.piperbinary }}" />
-          <label>Piper Modell</label>
-          <input type="text" id="pipermodel" value="{{ config.pipermodel }}" />
-          <div class="hint" style="margin-top:8px;">
-            Piper Binary: {% if piper_status.binary_exists %}vorhanden{% else %}fehlt{% endif %}, Modell: {% if piper_status.model_exists %}vorhanden{% else %}fehlt{% endif %}
-          </div>
+        <label for="tts_engine">TTS Engine</label>
+        <select id="tts_engine" onchange="toggleTts()">
+          <option value="piper" {% if config.tts_engine == 'piper' %}selected{% endif %}>Piper lokal</option>
+          <option value="google" {% if config.tts_engine == 'google' %}selected{% endif %}>Google Cloud TTS</option>
+        </select>
+        <div id="piperSettings">
+          <label for="piper_binary">Piper Binary</label>
+          <input id="piper_binary" value="{{ config.piper_binary }}">
+          <label for="piper_model">Piper Modell</label>
+          <input id="piper_model" value="{{ config.piper_model }}">
+          <div class="hint" style="margin-top: 8px;">Binary: {{ 'vorhanden' if piper_status.binary_exists else 'fehlt' }}, Modell: {{ 'vorhanden' if piper_status.model_exists else 'fehlt' }}</div>
         </div>
-        <div id="googlesettings" style="display:none;">
-          <label>Google API Key</label>
-          <input type="password" id="googleapikey" value="{{ config.googleapikey or '' }}" />
+        <div id="googleSettings">
+          <label for="google_api_key">Google API Key</label>
+          <input id="google_api_key" type="password" value="{{ config.google_api_key }}">
         </div>
-        <label>Firmenname</label>
-        <input type="text" id="companyname" value="{{ config.companyname }}" />
-        <label>Telefonnummer</label>
-        <input type="text" id="phonenumber" value="{{ config.phonenumber }}" />
-        <label>Ansage-Template</label>
-        <textarea id="announcementtemplate">{{ config.announcementtemplate }}</textarea>
+        <label for="company_name">Firmenname</label>
+        <input id="company_name" value="{{ config.company_name }}">
+        <label for="phone_number">Telefonnummer</label>
+        <input id="phone_number" value="{{ config.phone_number }}">
+        <label for="announcement_template">Ansage-Template</label>
+        <textarea id="announcement_template">{{ config.announcement_template }}</textarea>
         <div class="hint">Platzhalter: {company}, {weekday}, {date}, {holiday}, {phone}</div>
         <div class="actions">
-          <button class="btn btn-primary" onclick="saveConfig()">Einstellungen speichern</button>
-          <button class="btn btn-secondary" onclick="previewTTS()">TTS Vorschau</button>
+          <button class="primary" onclick="saveConfig()">Speichern</button>
+          <button class="secondary" onclick="previewTts()">TTS Vorschau</button>
         </div>
         <div id="cfgStatus" class="status"></div>
         <audio id="ttsPlayer" controls style="display:none;"></audio>
       </section>
-        <button class="btn btn-secondary btn-sm" onclick="loadHolidays()">Aktualisieren</button>
-      </div>
-      <table id="holidayTable">
-        <thead><tr><th>Datum</th><th>Wochentag</th><th>Feiertag</th><th>WAV-Datei</th></tr></thead>
-        <tbody>
-          {% for h in holidays %}
-          <tr>
-            <td>{{ h.date }}</td>
-            <td>{{ h.weekday }}</td>
-            <td><span class="badge">{{ h.name }}</span></td>
-            <td style="font-family:monospace;font-size:12px;color:var(--muted)">holiday_{{ h.date_iso }}_{{ h.name.lower().replace(' ','_') }}.wav</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div class="actions">
-        <button class="btn btn-primary" onclick="startSync(false)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          Sync starten
-        </button>
-        <button class="btn btn-secondary" onclick="startSync(true)">Dry Run</button>
-      </div>
-      <div id="syncStatus" class="status-msg"></div>
-    </div>
 
       <section class="card full">
-        <h2>Diff / Vorschau</h2>
-        <div class="hint">Zeigt vor dem Schreiben nach 3CX, welche Feiertage neu wären, welche Audios schon existieren und welche Einträge vermutlich bereits in 3CX vorhanden sind.</div>
-        <table id="diffTable" style="margin-top:16px;">
-          <thead>
-            <tr>
-              <th>Datum</th>
-              <th>Feiertag</th>
-              <th>Datei</th>
-              <th>Audio</th>
-              <th>3CX</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody><tr><td colspan="6" class="hint">Noch keine Vorschau geladen.</td></tr></tbody>
+        <h2>Vorschau</h2>
+        <table>
+          <thead><tr><th>Datum</th><th>Feiertag</th><th>Datei</th><th>Audio</th><th>Aktion</th></tr></thead>
+          <tbody id="diffRows"><tr><td colspan="5" class="hint">Noch keine Vorschau geladen.</td></tr></tbody>
         </table>
       </section>
-    <!-- 3CX Verbindung -->
-    <div class="card">
-      <h2>
-        3CX Verbindung
-        <button class="cx-status" id="cxStatus" onclick="testConnection()" title="Klicken zum Testen">
-          <span class="cx-dot"></span>
-          <span id="cxStatusText">Nicht geprüft</span>
-        </button>
-      </h2>
-      <label>3CX Host URL</label>
-      <input type="text" id="cx_host" value="{{ config.cx_host }}" placeholder="https://localhost:5001">
-      <label>Benutzername</label>
-      <input type="text" id="cx_username" value="{{ config.cx_username }}">
-      <label>Passwort</label>
-      <input type="password" id="cx_password" placeholder="••••••••">
-      <label>Region / Kanton</label>
-      <select id="cfg_region" onchange="document.getElementById('region').value=this.value">
-        <option value="CH-ZH" {% if config.region == 'CH-ZH' %}selected{% endif %}>Zürich (CH-ZH)</option>
-        <option value="CH-BE" {% if config.region == 'CH-BE' %}selected{% endif %}>Bern (CH-BE)</option>
-        <option value="CH-AG" {% if config.region == 'CH-AG' %}selected{% endif %}>Aargau (CH-AG)</option>
-        <option value="AT"    {% if config.region == 'AT'    %}selected{% endif %}>Österreich (AT)</option>
-        <option value="DE"    {% if config.region == 'DE'    %}selected{% endif %}>Deutschland (DE)</option>
-      </select>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
-        <input type="checkbox" id="auto_set_holidays" {% if config.auto_set_holidays %}checked{% endif %} style="width:auto">
-        Feiertage automatisch in 3CX setzen
-      </label>
-      <div id="connStatus" class="status-msg"></div>
-    </div>
 
       <section class="card full">
         <h2>Logs</h2>
-        <pre id="logOutput">{% for line in loglines %}{{ line }}{% endfor %}</pre>
-        <div class="actions">
-          <button class="btn btn-secondary" onclick="loadLogs()">Logs aktualisieren</button>
-        </div>
+        <pre id="logOutput">{% for line in log_lines %}{{ line }}{% endfor %}</pre>
+        <div class="actions"><button class="secondary" onclick="loadLogs()">Logs aktualisieren</button></div>
       </section>
-    <!-- TTS Einstellungen -->
-    <div class="card">
-      <h2>TTS / Ansage</h2>
-      <label>TTS Engine</label>
-      <select id="tts_engine" onchange="toggleTTS()">
-        <option value="piper" {% if config.tts_engine == 'piper' %}selected{% endif %}>Piper (lokal, offline)</option>
-        <option value="google" {% if config.tts_engine == 'google' %}selected{% endif %}>Google Cloud TTS</option>
-      </select>
-      <div id="piper_settings">
-        <label>Piper Binary</label>
-        <input type="text" id="piper_binary" value="{{ config.piper_binary }}">
-        <label>Piper Modell (.onnx)</label>
-        <input type="text" id="piper_model" value="{{ config.piper_model }}">
-      </div>
-      <div id="google_settings" style="display:none">
-        <label>Google API Key</label>
-        <input type="password" id="google_api_key" value="{{ config.google_api_key or '' }}">
-      </div>
-      <label>Firmenname</label>
-      <input type="text" id="company_name" value="{{ config.company_name }}">
-      <label>Telefonnummer</label>
-      <input type="text" id="phone_number" value="{{ config.phone_number }}">
-      <label>Ansage-Template</label>
-      <textarea id="announcement_template">{{ config.announcement_template }}</textarea>
-      <small style="color:var(--muted);font-size:12px">Platzhalter: {company}, {weekday}, {date}, {holiday}, {phone}</small>
-</div>
+    </div>
   </main>
 
   <script>
-    function qs(id){ return document.getElementById(id); }
-    function setStatus(el, type, msg){ el.className='status ' + type; el.textContent=msg; el.style.display='block'; }
-    function currentConfig(){
+    const BASE = "{{ base_path }}";
+    const qs = (id) => document.getElementById(id);
+    const api = (path) => `${BASE}${path}`;
+
+    function status(el, type, message) {
+      el.className = `status ${type}`;
+      el.textContent = message;
+    }
+
+    function configPayload() {
       return {
-        cxhost: qs('cxhost').value,
-        cxusername: qs('cxusername').value,
-        cxpassword: qs('cxpassword').value,
-        region: qs('cfgregion').value,
-        promptpath: qs('promptpath').value,
-        ttsengine: qs('ttsengine').value,
-        piperbinary: qs('piperbinary').value,
-        pipermodel: qs('pipermodel').value,
-        googleapikey: qs('googleapikey').value,
-        companyname: qs('companyname').value,
-        phonenumber: qs('phonenumber').value,
-        announcementtemplate: qs('announcementtemplate').value,
-        autosetholidays: qs('autosetholidays').checked,
-        verify_ssl: qs('verify_ssl').checked,
+        cx_host: qs("cx_host").value,
+        cx_username: qs("cx_username").value,
+        cx_password: qs("cx_password").value,
+        region: qs("region").value,
+        prompt_path: qs("prompt_path").value,
+        tts_engine: qs("tts_engine").value,
+        piper_binary: qs("piper_binary").value,
+        piper_model: qs("piper_model").value,
+        google_api_key: qs("google_api_key").value,
+        company_name: qs("company_name").value,
+        phone_number: qs("phone_number").value,
+        announcement_template: qs("announcement_template").value,
+        auto_set_holidays: qs("auto_set_holidays").checked,
+        verify_ssl: qs("verify_ssl").checked
       };
     }
-    function toggleTTS(){
-      const v = qs('ttsengine').value;
-      qs('pipersettings').style.display = v === 'piper' ? 'block' : 'none';
-      qs('googlesettings').style.display = v === 'google' ? 'block' : 'none';
+
+    function toggleTts() {
+      const isPiper = qs("tts_engine").value === "piper";
+      qs("piperSettings").style.display = isPiper ? "block" : "none";
+      qs("googleSettings").style.display = isPiper ? "none" : "block";
     }
-    async function initRegions(){
-      const resp = await fetch('/api/regions');
+
+    async function loadHolidays() {
+      const year = qs("year").value;
+      const region = encodeURIComponent(qs("region").value);
+      const resp = await fetch(api(`/api/holidays?year=${year}&region=${region}`));
       const data = await resp.json();
-      const select = qs('cfgregion');
-      select.innerHTML = '';
-      data.regions.forEach(group => {
-        const og = document.createElement('optgroup');
-        og.label = group.group;
-        group.options.forEach(opt => {
-          const o = document.createElement('option');
-          o.value = opt.value; o.textContent = opt.label;
-          if (opt.value === '{{ config.region }}') o.selected = true;
-          og.appendChild(o);
-        });
-        select.appendChild(og);
-      });
-      select.addEventListener('change', ()=> qs('region').value = select.value);
+      qs("holidayRows").innerHTML = data.holidays.map((h) => `
+        <tr><td>${h.date_display}</td><td>${h.weekday}</td><td><span class="badge">${h.name}</span></td><td class="mono">${h.filename}</td></tr>
+      `).join("");
     }
-    async function loadHolidays(){
-      const year = qs('year').value;
-      const region = qs('region').value;
-      const resp = await fetch(`/api/holidays?year=${year}&region=${encodeURIComponent(region)}`);
-      const data = await resp.json();
-      const tbody = document.querySelector('#holidayTable tbody');
-      tbody.innerHTML = data.holidays.map(h => `
-        <tr>
-          <td>${h.date}</td>
-          <td>${h.weekday}</td>
-          <td><span class="badge">${h.name}</span></td>
-          <td class="mono">${h.filename}</td>
-        </tr>
-      `).join('');
-    }
-    async function showDiff(){
-      const resp = await fetch('/api/diff', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ year: parseInt(qs('year').value), dry_run: true })
+
+    async function showDiff() {
+      const resp = await fetch(api("/api/diff"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({year: parseInt(qs("year").value, 10), dry_run: true})
       });
       const data = await resp.json();
-      const tbody = document.querySelector('#diffTable tbody');
-      tbody.innerHTML = data.diff.map(h => {
-        const action = h.action === 'create' ? '<span class="pill-ok">create</span>' : (h.action === 'update_audio' ? '<span class="pill-warn">update_audio</span>' : '<span class="pill-skip">skip</span>');
-        return `
-          <tr>
-            <td>${h.date}</td>
-            <td>${h.name}</td>
-            <td class="mono">${h.filename}</td>
-            <td>${h.audio_exists ? 'vorhanden' : 'neu'}</td>
-            <td>${h.cx_exists ? 'existiert' : 'neu'}</td>
-            <td>${action}</td>
-          </tr>
-        `;
-      }).join('');
+      qs("diffRows").innerHTML = data.diff.map((h) => `
+        <tr><td>${h.date_display}</td><td>${h.name}</td><td class="mono">${h.filename}</td><td>${h.audio_exists ? "vorhanden" : "neu"}</td><td>${h.action}</td></tr>
+      `).join("");
     }
-    async function testConnection(){
-      const s = qs('syncStatus');
-      setStatus(s,'info','Verbinde mit 3CX ...');
+
+    async function saveConfig() {
+      const box = qs("cfgStatus");
       try {
-        const resp = await fetch('/api/test-connection',{method:'POST'});
-        const data = await resp.json();
-        if(resp.ok) setStatus(s,'ok',data.message || 'Verbindung OK');
-        else setStatus(s,'err',data.detail || 'Fehler');
-      } catch(e){ setStatus(s,'err','Netzwerkfehler: ' + e.message); }
-    }
-    async function startSync(dryRun){
-      const s = qs('syncStatus');
-      setStatus(s,'info', dryRun ? 'Dry Run wird gestartet ...' : 'Sync wird gestartet ...');
-      try {
-        const resp = await fetch('/api/sync', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ year: parseInt(qs('year').value), dry_run: dryRun })
+        const resp = await fetch(api("/api/config"), {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(configPayload())
         });
         const data = await resp.json();
-        if(resp.ok) setStatus(s,'ok', `${dryRun ? 'Dry Run' : 'Sync'} für ${data.year} gestartet. Bitte Logs prüfen.`);
-        else setStatus(s,'err', data.detail || 'Fehler beim Start');
+        if (!resp.ok) throw new Error(data.detail || "Speichern fehlgeschlagen");
+        status(box, "ok", "Einstellungen gespeichert.");
+      } catch (error) {
+        status(box, "err", error.message);
+      }
+    }
+
+    async function testConnection() {
+      const box = qs("connStatus");
+      status(box, "info", "Verbindung wird getestet ...");
+      try {
+        await saveConfig();
+        const resp = await fetch(api("/api/test-connection"), {method: "POST"});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.message || data.detail || "Verbindung fehlgeschlagen");
+        status(box, "ok", `${data.message}${data.version ? " (" + data.version + ")" : ""}`);
+      } catch (error) {
+        status(box, "err", error.message);
+      }
+    }
+
+    async function startSync(dryRun) {
+      const box = qs("syncStatus");
+      status(box, "info", dryRun ? "Dry Run wird gestartet ..." : "Sync wird gestartet ...");
+      try {
+        await saveConfig();
+        const resp = await fetch(api("/api/sync"), {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({year: parseInt(qs("year").value, 10), dry_run: dryRun})
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "Start fehlgeschlagen");
+        status(box, "ok", `${dryRun ? "Dry Run" : "Sync"} fuer ${data.year} gestartet.`);
         setTimeout(loadLogs, 1500);
-      } catch(e){ setStatus(s,'err','Netzwerkfehler: ' + e.message); }
+      } catch (error) {
+        status(box, "err", error.message);
+      }
     }
-    async function saveConfig(){
-      const s = qs('cfgStatus');
-      try {
-        const resp = await fetch('/api/config', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(currentConfig())
-        });
-        if(resp.ok) setStatus(s,'ok','Einstellungen gespeichert.');
-        else {
-          const d = await resp.json();
-          setStatus(s,'err', d.detail || 'Fehler beim Speichern');
-        }
-      } catch(e){ setStatus(s,'err','Netzwerkfehler: ' + e.message); }
-    }
-    async function previewTTS(){
-      const player = qs('ttsPlayer');
-      const text = qs('announcementtemplate').value
-        .replace('{company}', qs('companyname').value || 'Musterfirma')
-        .replace('{weekday}', 'Donnerstag')
-        .replace('{date}', '01.01.2026')
-        .replace('{holiday}', 'Neujahr')
-        .replace('{phone}', qs('phonenumber').value || '+41 44 000 00 00');
-      const resp = await fetch('/api/tts-preview', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text })
+
+    async function previewTts() {
+      const text = qs("announcement_template").value
+        .replace("{company}", qs("company_name").value || "Musterfirma")
+        .replace("{weekday}", "Donnerstag")
+        .replace("{date}", "01.01.2026")
+        .replace("{holiday}", "Neujahr")
+        .replace("{phone}", qs("phone_number").value || "+41 44 000 00 00");
+      const resp = await fetch(api("/api/tts-preview"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({text})
       });
-      if(!resp.ok){
-        const err = await resp.json().catch(() => ({detail:'TTS Fehler'}));
-        setStatus(qs('cfgStatus'),'err', err.detail || 'TTS Fehler');
+      if (!resp.ok) {
+        status(qs("cfgStatus"), "err", "TTS Vorschau fehlgeschlagen.");
         return;
       }
       const blob = await resp.blob();
+      const player = qs("ttsPlayer");
       player.src = URL.createObjectURL(blob);
-      player.style.display = 'block';
-      player.play().catch(()=>{});
-    <!-- Logs -->
-    <div class="card full-width">
-      <h2>Logs</h2>
-      <pre id="logOutput">{% for line in log_lines %}{{ line }}{% endfor %}</pre>
-      <div class="actions">
-        <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Aktualisieren</button>
-        <button class="btn btn-primary btn-sm" onclick="saveConfig()">Einstellungen speichern</button>
-      </div>
-      <div id="cfgStatus" class="status-msg"></div>
-    </div>
+      player.style.display = "block";
+      player.play().catch(() => {});
+    }
 
-  </div>
-</div>
-
-<script>
-// ── TTS Toggle ────────────────────────────────────────────────────────────────
-function toggleTTS() {
-  const v = document.getElementById("tts_engine").value;
-  document.getElementById("piper_settings").style.display = v === "piper" ? "" : "none";
-  document.getElementById("google_settings").style.display = v === "google" ? "" : "none";
-}
-toggleTTS();
-
-// ── Feiertage laden ───────────────────────────────────────────────────────────
-async function loadHolidays() {
-  const year = document.getElementById("year").value;
-  const region = document.getElementById("region").value;
-  const resp = await fetch(`/api/holidays?year=${year}&region=${region}`);
-  const data = await resp.json();
-  const tbody = document.querySelector("#holidayTable tbody");
-  tbody.innerHTML = data.holidays.map(h =>
-    `<tr><td>${h.date}</td><td>${h.weekday}</td>
-     <td><span class="badge">${h.name}</span></td>
-     <td style="font-family:monospace;font-size:12px;color:var(--muted)">holiday_${h.date_iso}_${h.name.toLowerCase().replace(/ /g,"_")}.wav</td></tr>`
-  ).join("");
-}
-
-// ── Verbindungstest mit Status-Indikator ──────────────────────────────────────
-async function testConnection() {
-  const btn  = document.getElementById("cxStatus");
-  const txt  = document.getElementById("cxStatusText");
-  const msg  = document.getElementById("connStatus");
-
-  btn.className = "cx-status checking";
-  txt.textContent = "Prüfe...";
-  msg.className = "status-msg info";
-  msg.textContent = "Verbindung wird getestet...";
-  msg.style.display = "block";
-
-  try {
-    const resp = await fetch("/api/test-connection", { method: "POST" });
-    let data;
-    try { data = await resp.json(); }
-    catch(e) { throw new Error("Server antwortete mit ungültigem Format"); }
-
-    if (resp.ok && data.connected) {
-      btn.className = "cx-status connected";
-      txt.textContent = data.version ? `Verbunden (v${data.version})` : "Verbunden";
-      msg.className = "status-msg ok";
-      msg.textContent = "✓ " + data.message;
-    } else {
-      btn.className = "cx-status disconnected";
-      txt.textContent = "Nicht verbunden";
-      msg.className = "status-msg err";
-      msg.textContent = "✗ " + (data?.message || "Verbindung fehlgeschlagen");
-}
-    async function loadLogs(){
-      const resp = await fetch('/api/logs?lines=100');
+    async function loadLogs() {
+      const resp = await fetch(api("/api/logs?lines=100"));
       const data = await resp.json();
-      qs('logOutput').textContent = (data.logs || []).join('');
-      qs('logOutput').scrollTop = qs('logOutput').scrollHeight;
-  } catch(e) {
-    btn.className = "cx-status disconnected";
-    txt.textContent = "Fehler";
-    msg.className = "status-msg err";
-    msg.textContent = "✗ " + e.message;
-  }
-}
+      qs("logOutput").textContent = (data.logs || []).join("");
+      qs("logOutput").scrollTop = qs("logOutput").scrollHeight;
+    }
 
-// ── Sync starten ──────────────────────────────────────────────────────────────
-async function startSync(dryRun) {
-  const s = document.getElementById("syncStatus");
-  s.className = "status-msg info";
-  s.textContent = dryRun ? "Dry Run läuft..." : "Sync wird gestartet...";
-  s.style.display = "block";
-  const year = parseInt(document.getElementById("year").value);
-  try {
-    const resp = await fetch("/api/sync", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({year, dry_run: dryRun})
-    });
-    const data = await resp.json();
-    if (resp.ok) {
-      s.className = "status-msg ok";
-      s.textContent = `✓ ${dryRun?"Dry Run":"Sync"} gestartet für ${year}. Bitte Logs prüfen.`;
-      setTimeout(loadLogs, 2000);
-    } else {
-      s.className = "status-msg err";
-      s.textContent = "✗ " + (data?.detail || "Unbekannter Fehler");
-}
-    initRegions();
-    toggleTTS();
+    toggleTts();
   </script>
-  } catch(e) {
-    s.className = "status-msg err";
-    s.textContent = "✗ Netzwerkfehler: " + e.message;
-  }
-}
-
-// ── Config speichern ──────────────────────────────────────────────────────────
-async function saveConfig() {
-  const s = document.getElementById("cfgStatus");
-  const cfg = {
-    cx_host: document.getElementById("cx_host").value,
-    cx_username: document.getElementById("cx_username").value,
-    cx_password: document.getElementById("cx_password").value,
-    region: document.getElementById("cfg_region").value,
-    prompt_path: "{{ config.prompt_path }}",
-    tts_engine: document.getElementById("tts_engine").value,
-    piper_binary: document.getElementById("piper_binary").value,
-    piper_model: document.getElementById("piper_model").value,
-    google_api_key: document.getElementById("google_api_key").value,
-    company_name: document.getElementById("company_name").value,
-    phone_number: document.getElementById("phone_number").value,
-    announcement_template: document.getElementById("announcement_template").value,
-    auto_set_holidays: document.getElementById("auto_set_holidays").checked,
-  };
-  try {
-    const resp = await fetch("/api/config", {
-      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(cfg)
-    });
-    const data = await resp.json();
-    if (resp.ok) { s.className="status-msg ok"; s.textContent="✓ Einstellungen gespeichert"; }
-    else { s.className="status-msg err"; s.textContent="✗ Fehler: " + (data?.detail || "Unbekannt"); }
-  } catch(e) {
-    s.className="status-msg err"; s.textContent="✗ Netzwerkfehler: " + e.message;
-  }
-  s.style.display="block";
-  setTimeout(()=>{ s.style.display="none"; }, 3000);
-}
-
-// ── Logs laden ────────────────────────────────────────────────────────────────
-async function loadLogs() {
-  try {
-    const resp = await fetch("/api/logs?lines=100");
-    const data = await resp.json();
-    const pre = document.getElementById("logOutput");
-    pre.textContent = data.logs.join("");
-    pre.scrollTop = pre.scrollHeight;
-  } catch(e) {}
-}
-
-// Verbindung beim Laden automatisch prüfen
-window.addEventListener("load", () => setTimeout(testConnection, 500));
-</script>
 </body>
-</html>
 </html>
