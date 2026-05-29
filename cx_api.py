@@ -1,13 +1,29 @@
 import requests
 
 
+def _extract_token(data):
+    if isinstance(data, str):
+        return data
+    if not isinstance(data, dict):
+        return ""
+    for key in ("access_token", "AccessToken", "accessToken", "token", "Token"):
+        value = data.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            nested = _extract_token(value)
+            if nested:
+                return nested
+    return ""
+
+
 class CXApi:
     def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False, xapi_token: str = ""):
         self.host = host.rstrip("/")
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
-        self.xapi_token = xapi_token.strip()
+        self.xapi_token = xapi_token.strip() if isinstance(xapi_token, str) else ""
 
     def test_connection(self):
         token = self.get_access_token()
@@ -28,13 +44,7 @@ class CXApi:
             if not response.content:
                 return ""
             data = response.json()
-            token = (
-                data.get("Token")
-                or data.get("token")
-                or data.get("access_token")
-                or data.get("AccessToken")
-                or data.get("accessToken")
-            )
+            token = _extract_token(data)
             if not token:
                 raise ConnectionError("3CX Login erfolgreich, aber kein Access Token erhalten")
             return token
@@ -52,6 +62,9 @@ class CXApi:
             "$orderby": "Name",
             "$select": "Id,Name,Number,IsDefault",
         }
+        token = _extract_token(token)
+        if not token:
+            raise ConnectionError("Kein 3CX Access Token erhalten")
         authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
         headers = {"Accept": "application/json", "Authorization": authorization}
         try:
