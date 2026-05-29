@@ -1,3 +1,5 @@
+from datetime import date
+
 import requests
 
 
@@ -26,6 +28,20 @@ def _normalize_date(value):
     return text
 
 
+def _date_from_parts(value):
+    if not isinstance(value, dict):
+        return ""
+    day = value.get("Day")
+    month = value.get("Month")
+    year = value.get("Year")
+    if not (day and month and year):
+        return ""
+    try:
+        return date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return ""
+
+
 def _collect_holidays(data):
     holidays = []
 
@@ -38,15 +54,16 @@ def _collect_holidays(data):
             return
 
         keys = {str(key).lower(): key for key in value}
+        date_value = _date_from_parts(value)
         date_key = next(
             (keys[key] for key in ("date", "day", "holidaydate", "start", "starttime", "startdate", "from") if key in keys),
             None,
         )
         name_key = next((keys[key] for key in ("name", "displayname", "reason", "description") if key in keys), None)
-        if date_key and name_key:
+        if (date_value or date_key) and name_key:
             holidays.append(
                 {
-                    "date": _normalize_date(value.get(date_key)),
+                    "date": date_value or _normalize_date(value.get(date_key)),
                     "name": str(value.get(name_key) or ""),
                     "raw": value,
                 }
@@ -97,6 +114,24 @@ class CXApi:
         if response.status_code != 200:
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code}")
         return response.json()
+
+    def _xapi_post(self, path: str, payload: dict):
+        url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
+        headers = self._auth_headers()
+        headers["Content-Type"] = "application/json"
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=15, verify=self.verify_ssl)
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX XAPI nicht erreichbar") from e
+        if response.status_code in (401, 403):
+            raise ValueError("3CX XAPI Anmeldung fehlgeschlagen")
+        if response.status_code not in (200, 201, 204):
+            raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
+        if response.content:
+            return response.json()
+        return {}
 
     def test_connection(self):
         token = self.get_access_token()
@@ -149,6 +184,7 @@ class CXApi:
             return {"holidays": [], "source": "no_department"}
 
         attempts = [
+            ("Holidays", None),
             (f"Groups({department_id})", {"$expand": "Holidays"}),
             (f"Groups({department_id})", {"$expand": "OfficeHolidays"}),
             (f"Groups({department_id})/Holidays", None),
@@ -164,18 +200,49 @@ class CXApi:
                 errors.append(path)
                 continue
             holidays = _collect_holidays(data)
+            if path == "Holidays":
+                group = self._group_identifier(department_id)
+                holidays = [
+                    holiday for holiday in holidays
+                    if not group or str(holiday.get("raw", {}).get("Group", "")) == group
+                ]
             if holidays:
                 return {"holidays": holidays, "source": path}
         return {"holidays": [], "source": "not_found", "attempted": errors}
 
+    def _group_identifier(self, department_id: str):
+        departments = self.get_departments()
+        for department in departments:
+            if str(department.get("id", "")) == str(department_id):
+                return department.get("number") or department.get("name") or ""
+        return ""
+
     def set_holiday(self, name: str, date_str: str, filename: str, department_id: str = ""):
-        return {
-            "status": "not_implemented",
-            "name": name,
-            "date": date_str,
-            "file": filename,
-            "department_id": department_id,
+        if not department_id:
+            raise ValueError("Kein Department fuer den Feiertag ausgewaehlt")
+        try:
+            day = date.fromisoformat(date_str)
+        except ValueError as exc:
+            raise ValueError(f"Ungueltiges Feiertagsdatum: {date_str}") from exc
+        group = self._group_identifier(department_id)
+        if not group:
+            raise ValueError(f"Department {department_id} konnte nicht aufgeloest werden")
+        payload = {
+            "Group": group,
+            "Name": name,
+            "IsRecurrent": False,
+            "HolidayPrompt": filename,
+            "Day": day.day,
+            "Month": day.month,
+            "Year": day.year,
+            "TimeOfStartDate": "P0D",
+            "DayEnd": day.day,
+            "MonthEnd": day.month,
+            "YearEnd": day.year,
+            "TimeOfEndDate": "P1D",
         }
+        result = self._xapi_post("Holidays", payload)
+        return {"status": "created", "payload": payload, "response": result}
 
     def get_holidays(self):
         return []

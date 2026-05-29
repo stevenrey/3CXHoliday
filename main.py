@@ -125,12 +125,13 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
         try:
             generate_tts(text, filepath, config)
             if api:
-                api.set_holiday(
+                result = api.set_holiday(
                     holiday["name"],
                     holiday["date"],
                     holiday["filename"],
                     config.get("cx_department_id", ""),
                 )
+                logger.info("3CX Holiday erstellt: %s", result.get("payload", {}))
             ok_count += 1
         except Exception as exc:
             logger.exception("Fehler bei %s: %s", holiday["name"], exc)
