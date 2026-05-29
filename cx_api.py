@@ -105,7 +105,7 @@ class CXApi:
         self.client_secret = client_secret
 
     def _auth_headers(self):
-        token = _extract_token(self.xapi_token or self.get_access_token())
+        token = _extract_token(self.get_access_token() if self.auth_mode == "clientcreds" else (self.xapi_token or self.get_access_token()))
         return self._headers_for_token(token)
 
     def _login_auth_headers(self):
@@ -174,7 +174,9 @@ class CXApi:
             raise ConnectionError("3CX XAPI nicht erreichbar") from e
         if response.status_code in (401, 403):
             token_hint = (
-                "Der konfigurierte XAPI Bearer Token wurde abgelehnt."
+                "Client Credentials wurden abgelehnt; bitte App-Rechte in 3CX pruefen."
+                if self.auth_mode == "clientcreds"
+                else "Der konfigurierte XAPI Bearer Token wurde abgelehnt."
                 if self.xapi_token
                 else "Fuer Schreibzugriff ist wahrscheinlich ein aktueller XAPI Bearer Token aus der 3CX Admin-Session noetig."
             )
