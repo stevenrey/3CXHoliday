@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 import requests
 
@@ -105,7 +106,10 @@ class CXApi:
         self.client_secret = client_secret
 
     def _auth_headers(self):
-        token = _extract_token(self.get_access_token() if self.auth_mode == "clientcreds" else (self.xapi_token or self.get_access_token()))
+        if self.auth_mode == "clientcreds" or (self.username and self.password):
+            token = _extract_token(self.get_access_token())
+        else:
+            token = _extract_token(self.xapi_token)
         return self._headers_for_token(token)
 
     def _login_auth_headers(self):
@@ -187,6 +191,73 @@ class CXApi:
             return response.json()
         return {}
 
+    def _xapi_delete(self, path: str, allow_missing: bool = False):
+        url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
+        delete_headers = {
+            "ngsw-bypass": "bypass",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        }
+        try:
+            response = self._request_with_auth_retry(
+                "DELETE",
+                url,
+                headers=delete_headers,
+                timeout=15,
+                verify=self.verify_ssl,
+            )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX XAPI nicht erreichbar") from e
+        if allow_missing and response.status_code == 404:
+            return {"status": "not_found"}
+        if response.status_code in (401, 403):
+            raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+        if response.status_code not in (200, 204):
+            raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
+        return {"status": "deleted"}
+
+    def upload_prompt(self, filepath: str, prompt_name: str):
+        prompt_name = Path(prompt_name).name
+        file_path = Path(filepath)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Ansage-Datei nicht gefunden: {file_path}")
+
+        self._xapi_delete(f"CustomPrompts('{prompt_name}')", allow_missing=True)
+
+        url = f"{self.host}/xapi/v1/customPrompts"
+        headers = self._auth_headers()
+        headers.update(
+            {
+                "Accept": "application/json, text/plain, */*",
+                "ngsw-bypass": "bypass",
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+            }
+        )
+        try:
+            with file_path.open("rb") as handle:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    files={"file": (prompt_name, handle, "audio/wav")},
+                    timeout=60,
+                    verify=self.verify_ssl,
+                )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung beim 3CX Prompt-Upload") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX Prompt-Upload nicht erreichbar") from e
+
+        if response.status_code in (401, 403):
+            raise ValueError(f"3CX Prompt-Upload fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+        if response.status_code not in (200, 201, 204):
+            raise ConnectionError(f"3CX Prompt-Upload Antwort: HTTP {response.status_code} {response.text[:300]}")
+        if response.content:
+            return response.json()
+        return {}
+
     def test_connection(self):
         token = self.get_access_token()
         return {"message": "Verbindung erfolgreich", "version": "", "token_type": "bearer" if token else ""}
@@ -197,9 +268,9 @@ class CXApi:
         if not self.host or not self.username or not self.password:
             raise ValueError("3CX Zugangsdaten unvollstaendig")
         url = f"{self.host}/webclient/api/Login/GetAccessToken"
-        payload = {"Username": self.username, "Password": self.password}
+        payload = {"Username": self.username, "Password": self.password, "SecurityCode": ""}
         try:
-            response = requests.post(url, json=payload, timeout=15, verify=self.verify_ssl)
+            response = requests.post(url, json=payload, headers={"Accept": "application/json"}, timeout=15, verify=self.verify_ssl)
         except requests.exceptions.Timeout as e:
             raise TimeoutError("Zeitueberschreitung bei der Verbindung zu 3CX") from e
         except requests.exceptions.ConnectionError as e:
@@ -321,7 +392,7 @@ class CXApi:
             "Group": group,
             "Name": name,
             "IsRecurrent": True,
-            "HolidayPrompt": "",
+            "HolidayPrompt": filename,
             "Day": day.day,
             "Month": day.month,
             "Year": 0,

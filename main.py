@@ -141,6 +141,8 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
 
         try:
             generate_tts(text, filepath, config)
+            api.upload_prompt(filepath, holiday["filename"])
+            logger.info("3CX Ansage hochgeladen: %s", holiday["filename"])
             result = api.set_holiday(
                 holiday["name"],
                 holiday["date"],
