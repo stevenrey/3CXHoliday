@@ -62,4 +62,4 @@ Der gleiche Installationsbefehl kann erneut ausgefuehrt werden. Wenn `/opt/3cx-h
 
 ## Hinweis zur 3CX API
 
-Der Verbindungstest ist implementiert. Das eigentliche Setzen von Feiertagen in 3CX ist in `cx_api.py` aktuell noch als Stub vorbereitet und muss gegen die konkrete 3CX-v20-API vervollstaendigt werden.
+Die App meldet sich per Benutzer/Passwort oder Client Credentials bei der 3CX an. Ein manueller XAPI Bearer Token ist nur als Test-Fallback vorgesehen. Beim Sync wird die WAV-Ansage als 3CX Custom Prompt hochgeladen und der Feiertag danach mit diesem Prompt im ausgewaehlten Department erstellt.
