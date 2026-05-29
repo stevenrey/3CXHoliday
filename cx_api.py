@@ -2,11 +2,12 @@ import requests
 
 
 class CXApi:
-    def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False):
+    def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False, xapi_token: str = ""):
         self.host = host.rstrip("/")
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
+        self.xapi_token = xapi_token.strip()
 
     def test_connection(self):
         token = self.get_access_token()
@@ -42,7 +43,7 @@ class CXApi:
         raise ConnectionError(f"3CX Antwort: HTTP {response.status_code}")
 
     def get_departments(self):
-        token = self.get_access_token()
+        token = self.xapi_token or self.get_access_token()
         if not token:
             raise ConnectionError("Kein 3CX Access Token erhalten")
         url = f"{self.host}/xapi/v1/Groups"
@@ -51,7 +52,8 @@ class CXApi:
             "$orderby": "Name",
             "$select": "Id,Name,Number,IsDefault",
         }
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+        authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+        headers = {"Accept": "application/json", "Authorization": authorization}
         try:
             response = requests.get(url, params=params, headers=headers, timeout=15, verify=self.verify_ssl)
         except requests.exceptions.Timeout as e:
@@ -59,7 +61,10 @@ class CXApi:
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError("3CX XAPI nicht erreichbar") from e
         if response.status_code in (401, 403):
-            raise ValueError("3CX XAPI Anmeldung fehlgeschlagen")
+            raise ValueError(
+                "3CX XAPI Anmeldung fehlgeschlagen. Bitte pruefen: 3CX Host muss die FQDN-URL sein "
+                "(z.B. https://tiagdemo.3cx.ch) und der Benutzer/Token braucht XAPI/Admin-Rechte."
+            )
         if response.status_code != 200:
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code}")
         data = response.json()

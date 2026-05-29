@@ -43,6 +43,7 @@ class ConfigModel(BaseModel):
     cx_password: str = ""
     cx_department_id: str = ""
     cx_department_name: str = ""
+    cx_xapi_token: str = ""
     region: str = "CH-ZH"
     prompt_path: str = "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts"
     tts_engine: str = "piper"
@@ -76,6 +77,8 @@ def safe_config(config: dict) -> dict:
     for key in ("cx_password", "google_api_key"):
         if masked.get(key):
             masked[key] = "***"
+    if masked.get("cx_xapi_token"):
+        masked["cx_xapi_token"] = "***"
     return masked
 
 
@@ -102,6 +105,7 @@ def run_sync(config: dict, year: int, dry_run: bool) -> None:
             config.get("cx_username", ""),
             config.get("cx_password", ""),
             config.get("verify_ssl", False),
+            config.get("cx_xapi_token", ""),
         )
 
     ok_count = 0
@@ -187,6 +191,8 @@ async def api_save_config(payload: ConfigModel):
         data["cx_password"] = existing.get("cx_password", "")
     if data.get("google_api_key") == "***":
         data["google_api_key"] = existing.get("google_api_key", "")
+    if data.get("cx_xapi_token") == "***":
+        data["cx_xapi_token"] = existing.get("cx_xapi_token", "")
     return safe_config(save_config(data))
 
 
@@ -199,6 +205,7 @@ async def api_test_connection():
             config.get("cx_username", ""),
             config.get("cx_password", ""),
             config.get("verify_ssl", False),
+            config.get("cx_xapi_token", ""),
         )
         result = api.test_connection()
         return {"status": "ok", "connected": True, **result}
@@ -222,6 +229,7 @@ async def api_departments():
             config.get("cx_username", ""),
             config.get("cx_password", ""),
             config.get("verify_ssl", False),
+            config.get("cx_xapi_token", ""),
         )
         departments = api.get_departments()
         return {"departments": departments, "count": len(departments)}

@@ -10,6 +10,7 @@ DEFAULTS = {
     "cx_password": "",
     "cx_department_id": "",
     "cx_department_name": "",
+    "cx_xapi_token": "",
     "region": "CH-ZH",
     "prompt_path": "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts",
     "tts_engine": "piper",

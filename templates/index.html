@@ -108,6 +108,8 @@
         <input id="cx_username" value="{{ config.cx_username }}">
         <label for="cx_password">Passwort</label>
         <input id="cx_password" type="password" value="{{ config.cx_password }}">
+        <label for="cx_xapi_token">XAPI Bearer Token optional</label>
+        <input id="cx_xapi_token" type="password" value="{{ config.cx_xapi_token }}" placeholder="Nur falls Departments per Login nicht ladbar sind">
         <label for="prompt_path">Prompt-Pfad</label>
         <input id="prompt_path" value="{{ config.prompt_path }}">
         <label for="cx_department_id">Department fuer Feiertage</label>
@@ -198,6 +200,7 @@
         cx_host: qs("cx_host").value,
         cx_username: qs("cx_username").value,
         cx_password: qs("cx_password").value,
+        cx_xapi_token: qs("cx_xapi_token").value,
         cx_department_id: qs("cx_department_id").value,
         cx_department_name: qs("cx_department_id").selectedOptions[0]?.textContent || "",
         region: qs("region").value,
