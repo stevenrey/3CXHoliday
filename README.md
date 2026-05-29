@@ -24,9 +24,11 @@ https://<3cx-host>/holiday-import/api/health
 
 ## Was der Installer macht
 
-- installiert `git`, `python3`, `python3-venv`, `python3-pip` und `nginx`
+- installiert `git`, `python3`, `python3-venv`, `python3-pip`, `nginx` und Hilfstools
 - clont oder aktualisiert das Repo nach `/opt/3cx-holiday-importer`
 - erstellt ein Python-Venv und installiert `requirements.txt`
+- installiert Piper TTS nach `/opt/piper`
+- laedt das deutsche Modell `de_DE-thorsten-high.onnx`
 - installiert den systemd-Service `3cx-holiday-importer`
 - startet Uvicorn lokal auf `127.0.0.1:5000`
 - erstellt ein Nginx-Snippet fuer `/holiday-import/`
@@ -42,6 +44,8 @@ Der Installer erstellt kein neues Zertifikat und keinen separaten HTTPS-VHost.
 - Service: `/etc/systemd/system/3cx-holiday-importer.service`
 - Nginx Location: `/etc/nginx/snippets/3cx-holiday-importer-location.conf`
 - Log: `/var/log/3cx-holiday-importer.log`
+- Piper Binary: `/opt/piper/piper`
+- Piper Modell: `/opt/piper/de_DE-thorsten-high.onnx`
 
 ## Betrieb
 

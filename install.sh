@@ -8,6 +8,10 @@ SERVICE_FILE="/etc/systemd/system/3cx-holiday-importer.service"
 NGINX_SNIPPET="/etc/nginx/snippets/3cx-holiday-importer-location.conf"
 NGINX_INCLUDE="include ${NGINX_SNIPPET};"
 NGINX_BACKUP_DIR="/root/3cx-holiday-importer-nginx-backups"
+PIPER_DIR="${PIPER_DIR:-/opt/piper}"
+PIPER_RELEASE_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
+PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high/de_DE-thorsten-high.onnx"
+PIPER_MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Bitte als root ausfuehren, z.B. mit sudo." >&2
@@ -22,7 +26,7 @@ fi
 echo "==> Pakete installieren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y git python3 python3-venv python3-pip nginx
+apt-get install -y ca-certificates curl git python3 python3-venv python3-pip nginx tar
 
 echo "==> App nach ${APP_DIR} installieren"
 if [ -d "${APP_DIR}/.git" ]; then
@@ -38,6 +42,23 @@ echo "==> Python venv vorbereiten"
 python3 -m venv "${APP_DIR}/venv"
 "${APP_DIR}/venv/bin/pip" install --upgrade pip
 "${APP_DIR}/venv/bin/pip" install -r "${APP_DIR}/requirements.txt"
+
+echo "==> Piper TTS installieren"
+mkdir -p "${PIPER_DIR}"
+if [ ! -x "${PIPER_DIR}/piper" ]; then
+  tmp_piper="$(mktemp -d)"
+  curl -fsSL "${PIPER_RELEASE_URL}" -o "${tmp_piper}/piper.tar.gz"
+  tar -xzf "${tmp_piper}/piper.tar.gz" -C "${tmp_piper}"
+  cp -a "${tmp_piper}/piper/." "${PIPER_DIR}/"
+  rm -rf "${tmp_piper}"
+  chmod +x "${PIPER_DIR}/piper"
+fi
+if [ ! -s "${PIPER_DIR}/de_DE-thorsten-high.onnx" ]; then
+  curl -fL "${PIPER_MODEL_URL}" -o "${PIPER_DIR}/de_DE-thorsten-high.onnx"
+fi
+if [ ! -s "${PIPER_DIR}/de_DE-thorsten-high.onnx.json" ]; then
+  curl -fL "${PIPER_MODEL_CONFIG_URL}" -o "${PIPER_DIR}/de_DE-thorsten-high.onnx.json"
+fi
 
 echo "==> systemd Service installieren"
 cp "${APP_DIR}/3cx-holiday-importer.service.example" "${SERVICE_FILE}"
