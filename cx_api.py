@@ -136,12 +136,20 @@ class CXApi:
 
     def _xapi_post(self, path: str, payload: dict):
         url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
+        post_headers = {
+            "Content-Type": "application/json",
+            "Origin": self.host,
+            "Referer": f"{self.host}/",
+            "ngsw-bypass": "bypass",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        }
         try:
             response = self._request_with_auth_retry(
                 "POST",
                 url,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers=post_headers,
                 timeout=15,
                 verify=self.verify_ssl,
             )
@@ -150,7 +158,7 @@ class CXApi:
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError("3CX XAPI nicht erreichbar") from e
         if response.status_code in (401, 403):
-            raise ValueError("3CX XAPI Anmeldung fehlgeschlagen")
+            raise ValueError(f"3CX XAPI Anmeldung fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
         if response.content:
