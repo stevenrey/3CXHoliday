@@ -8,6 +8,8 @@ DEFAULTS = {
     "cx_host": "https://localhost:5001",
     "cx_username": "admin",
     "cx_password": "",
+    "cx_department_id": "",
+    "cx_department_name": "",
     "region": "CH-ZH",
     "prompt_path": "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts",
     "tts_engine": "piper",

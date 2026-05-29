@@ -110,8 +110,20 @@
         <input id="cx_password" type="password" value="{{ config.cx_password }}">
         <label for="prompt_path">Prompt-Pfad</label>
         <input id="prompt_path" value="{{ config.prompt_path }}">
+        <label for="cx_department_id">Department fuer Feiertage</label>
+        <select id="cx_department_id">
+          {% if config.cx_department_id %}
+          <option value="{{ config.cx_department_id }}" selected>{{ config.cx_department_name or config.cx_department_id }}</option>
+          {% else %}
+          <option value="">Departments laden ...</option>
+          {% endif %}
+        </select>
         <label><input id="auto_set_holidays" type="checkbox" {% if config.auto_set_holidays %}checked{% endif %} style="width:auto;"> Feiertage automatisch in 3CX setzen</label>
         <label><input id="verify_ssl" type="checkbox" {% if config.verify_ssl %}checked{% endif %} style="width:auto;"> SSL-Zertifikat der 3CX API pruefen</label>
+        <div class="actions">
+          <button class="secondary" onclick="testConnection()">Verbindung testen</button>
+          <button class="secondary" onclick="loadDepartments()">Departments laden</button>
+        </div>
         <div id="connStatus" class="status"></div>
       </section>
 
@@ -168,6 +180,13 @@
     const BASE = "{{ base_path }}";
     const qs = (id) => document.getElementById(id);
     const api = (path) => `${BASE}${path}`;
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[char]));
 
     function status(el, type, message) {
       el.className = `status ${type}`;
@@ -179,6 +198,8 @@
         cx_host: qs("cx_host").value,
         cx_username: qs("cx_username").value,
         cx_password: qs("cx_password").value,
+        cx_department_id: qs("cx_department_id").value,
+        cx_department_name: qs("cx_department_id").selectedOptions[0]?.textContent || "",
         region: qs("region").value,
         prompt_path: qs("prompt_path").value,
         tts_engine: qs("tts_engine").value,
@@ -246,6 +267,28 @@
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.message || data.detail || "Verbindung fehlgeschlagen");
         status(box, "ok", `${data.message}${data.version ? " (" + data.version + ")" : ""}`);
+      } catch (error) {
+        status(box, "err", error.message);
+      }
+    }
+
+    async function loadDepartments() {
+      const box = qs("connStatus");
+      const selected = qs("cx_department_id").value;
+      status(box, "info", "Departments werden geladen ...");
+      try {
+        await saveConfig();
+        const resp = await fetch(api("/api/departments"));
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.message || data.detail || "Departments konnten nicht geladen werden");
+        const departments = data.departments || [];
+        qs("cx_department_id").innerHTML = departments.map((department) => {
+          const label = `${department.name}${department.number ? " (" + department.number + ")" : ""}${department.is_default ? " - Standard" : ""}`;
+          const isSelected = department.id === selected || (!selected && department.is_default);
+          return `<option value="${escapeHtml(department.id)}" ${isSelected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        }).join("");
+        status(box, "ok", `${departments.length} Departments geladen.`);
+        await saveConfig();
       } catch (error) {
         status(box, "err", error.message);
       }

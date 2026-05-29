@@ -41,6 +41,8 @@ class ConfigModel(BaseModel):
     cx_host: str = "https://localhost:5001"
     cx_username: str = "admin"
     cx_password: str = ""
+    cx_department_id: str = ""
+    cx_department_name: str = ""
     region: str = "CH-ZH"
     prompt_path: str = "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts"
     tts_engine: str = "piper"
@@ -115,7 +117,12 @@ def run_sync(config: dict, year: int, dry_run: bool) -> None:
         try:
             generate_tts(text, filepath, config)
             if api:
-                api.set_holiday(holiday["name"], holiday["date"], holiday["filename"])
+                api.set_holiday(
+                    holiday["name"],
+                    holiday["date"],
+                    holiday["filename"],
+                    config.get("cx_department_id", ""),
+                )
             ok_count += 1
         except Exception as exc:
             logger.exception("Fehler bei %s: %s", holiday["name"], exc)
@@ -203,6 +210,29 @@ async def api_test_connection():
         return JSONResponse(status_code=503, content={"status": "error", "connected": False, "message": str(exc)})
     except Exception as exc:
         logger.exception("Verbindungstest fehlgeschlagen")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/departments")
+async def api_departments():
+    config = load_config()
+    try:
+        api = CXApi(
+            config.get("cx_host", ""),
+            config.get("cx_username", ""),
+            config.get("cx_password", ""),
+            config.get("verify_ssl", False),
+        )
+        departments = api.get_departments()
+        return {"departments": departments, "count": len(departments)}
+    except ValueError as exc:
+        return JSONResponse(status_code=401, content={"status": "error", "message": str(exc), "departments": []})
+    except TimeoutError as exc:
+        return JSONResponse(status_code=504, content={"status": "error", "message": str(exc), "departments": []})
+    except ConnectionError as exc:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(exc), "departments": []})
+    except Exception as exc:
+        logger.exception("Departments konnten nicht geladen werden")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
