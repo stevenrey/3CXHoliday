@@ -252,6 +252,9 @@ class CXApi:
         file_path = Path(filepath)
         if not file_path.exists():
             raise FileNotFoundError(f"Ansage-Datei nicht gefunden: {file_path}")
+        wav_data = file_path.read_bytes()
+        if not wav_data:
+            raise ValueError(f"Ansage-Datei ist leer: {file_path}")
 
         self._xapi_delete(f"CustomPrompts('{prompt_name}')", allow_missing=True)
 
@@ -266,14 +269,13 @@ class CXApi:
             }
         )
         try:
-            with file_path.open("rb") as handle:
-                response = requests.post(
-                    url,
-                    headers=headers,
-                    files={"file": (prompt_name, handle, "audio/wav")},
-                    timeout=60,
-                    verify=self.verify_ssl,
-                )
+            response = requests.post(
+                url,
+                headers=headers,
+                files={"file": (prompt_name, wav_data, "audio/wav")},
+                timeout=60,
+                verify=self.verify_ssl,
+            )
         except requests.exceptions.Timeout as e:
             raise TimeoutError("Zeitueberschreitung beim 3CX Prompt-Upload") from e
         except requests.exceptions.ConnectionError as e:
