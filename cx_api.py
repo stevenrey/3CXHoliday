@@ -1,4 +1,6 @@
 from datetime import date
+import base64
+import json
 from pathlib import Path
 
 import requests
@@ -18,6 +20,21 @@ def _extract_token(data):
             if nested:
                 return nested
     return ""
+
+
+def _decode_jwt_payload(token: str):
+    if not token:
+        return {}
+    clean_token = token[7:] if token.lower().startswith("bearer ") else token
+    parts = clean_token.split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode("ascii"))
+        return json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return {}
 
 
 def _normalize_date(value):
@@ -122,6 +139,18 @@ class CXApi:
             raise ConnectionError("Kein 3CX Access Token erhalten")
         authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
         return {"Accept": "application/json", "Authorization": authorization}
+
+    def get_token_info(self):
+        token = _extract_token(self.get_access_token())
+        payload = _decode_jwt_payload(token)
+        return {
+            "audience": payload.get("aud", ""),
+            "issuer": payload.get("iss", ""),
+            "user": payload.get("unique_name", payload.get("name", "")),
+            "max_role": payload.get("MaxRole", ""),
+            "roles": payload.get("role", []),
+            "expires_at": payload.get("exp", ""),
+        }
 
     def _request_with_auth_retry(self, method: str, url: str, **kwargs):
         headers = kwargs.pop("headers", {})

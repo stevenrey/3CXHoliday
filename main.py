@@ -246,6 +246,24 @@ async def api_test_connection():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/auth-info")
+async def api_auth_info():
+    config = load_config()
+    try:
+        api = make_cx_api(config)
+        info = api.get_token_info()
+        return {"status": "ok", **info}
+    except ValueError as exc:
+        return JSONResponse(status_code=401, content={"status": "error", "message": str(exc)})
+    except TimeoutError as exc:
+        return JSONResponse(status_code=504, content={"status": "error", "message": str(exc)})
+    except ConnectionError as exc:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(exc)})
+    except Exception as exc:
+        logger.exception("Auth-Info konnte nicht geladen werden")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/departments")
 async def api_departments():
     config = load_config()
