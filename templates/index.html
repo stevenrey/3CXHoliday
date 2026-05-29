@@ -104,10 +104,23 @@
         <h2>3CX Verbindung</h2>
         <label for="cx_host">3CX Host URL</label>
         <input id="cx_host" value="{{ config.cx_host }}">
-        <label for="cx_username">Benutzername</label>
-        <input id="cx_username" value="{{ config.cx_username }}">
-        <label for="cx_password">Passwort</label>
-        <input id="cx_password" type="password" value="{{ config.cx_password }}">
+        <label for="cx_auth_mode">Authentifizierung</label>
+        <select id="cx_auth_mode" onchange="toggleAuthMode()">
+          <option value="userpass" {% if config.cx_auth_mode != 'clientcreds' %}selected{% endif %}>Benutzer / Passwort</option>
+          <option value="clientcreds" {% if config.cx_auth_mode == 'clientcreds' %}selected{% endif %}>Client Credentials</option>
+        </select>
+        <div id="userpassAuth">
+          <label for="cx_username">Benutzername</label>
+          <input id="cx_username" value="{{ config.cx_username }}">
+          <label for="cx_password">Passwort</label>
+          <input id="cx_password" type="password" value="{{ config.cx_password }}">
+        </div>
+        <div id="clientCredsAuth">
+          <label for="cx_client_id">Client ID</label>
+          <input id="cx_client_id" value="{{ config.cx_client_id }}">
+          <label for="cx_client_secret">Client Secret</label>
+          <input id="cx_client_secret" type="password" value="{{ config.cx_client_secret }}">
+        </div>
         <label for="cx_xapi_token">XAPI Bearer Token optional</label>
         <input id="cx_xapi_token" type="password" value="{{ config.cx_xapi_token }}" placeholder="Nur falls Departments per Login nicht ladbar sind">
         <div class="hint">Zum Erstellen von Feiertagen kann ein aktueller Admin-XAPI-Bearer-Token noetig sein; reiner Login kann ggf. nur lesen.</div>
@@ -204,8 +217,11 @@
     function configPayload() {
       return {
         cx_host: qs("cx_host").value,
+        cx_auth_mode: qs("cx_auth_mode").value,
         cx_username: qs("cx_username").value,
         cx_password: qs("cx_password").value,
+        cx_client_id: qs("cx_client_id").value,
+        cx_client_secret: qs("cx_client_secret").value,
         cx_xapi_token: qs("cx_xapi_token").value,
         cx_department_id: qs("cx_department_id").value,
         cx_department_name: qs("cx_department_id").selectedOptions[0]?.textContent || "",
@@ -227,6 +243,12 @@
       const isPiper = qs("tts_engine").value === "piper";
       qs("piperSettings").style.display = isPiper ? "block" : "none";
       qs("googleSettings").style.display = isPiper ? "none" : "block";
+    }
+
+    function toggleAuthMode() {
+      const isClientCreds = qs("cx_auth_mode").value === "clientcreds";
+      qs("userpassAuth").style.display = isClientCreds ? "none" : "block";
+      qs("clientCredsAuth").style.display = isClientCreds ? "block" : "none";
     }
 
     async function loadHolidays() {
@@ -380,6 +402,7 @@
     }
 
     toggleTts();
+    toggleAuthMode();
   </script>
 </body>
 </html>

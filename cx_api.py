@@ -37,6 +37,8 @@ def _date_from_parts(value):
     if not (day and month and year):
         return ""
     try:
+        if int(year) == 0:
+            return f"0000-{int(month):02d}-{int(day):02d}"
         return date(int(year), int(month), int(day)).isoformat()
     except ValueError:
         return ""
@@ -82,12 +84,25 @@ def _collect_holidays(data):
 
 
 class CXApi:
-    def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False, xapi_token: str = ""):
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str,
+        verify_ssl: bool = False,
+        xapi_token: str = "",
+        auth_mode: str = "userpass",
+        client_id: str = "",
+        client_secret: str = "",
+    ):
         self.host = host.rstrip("/")
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
         self.xapi_token = xapi_token.strip() if isinstance(xapi_token, str) else ""
+        self.auth_mode = auth_mode or "userpass"
+        self.client_id = client_id
+        self.client_secret = client_secret
 
     def _auth_headers(self):
         token = _extract_token(self.xapi_token or self.get_access_token())
@@ -175,6 +190,8 @@ class CXApi:
         return {"message": "Verbindung erfolgreich", "version": "", "token_type": "bearer" if token else ""}
 
     def get_access_token(self):
+        if self.auth_mode == "clientcreds":
+            return self.get_client_credentials_token()
         if not self.host or not self.username or not self.password:
             raise ValueError("3CX Zugangsdaten unvollstaendig")
         url = f"{self.host}/webclient/api/Login/GetAccessToken"
@@ -196,6 +213,35 @@ class CXApi:
         if response.status_code in (401, 403):
             raise ValueError("3CX Anmeldung fehlgeschlagen")
         raise ConnectionError(f"3CX Antwort: HTTP {response.status_code}")
+
+    def get_client_credentials_token(self):
+        if not self.host or not self.client_id or not self.client_secret:
+            raise ValueError("3CX Client Credentials unvollstaendig")
+        url = f"{self.host}/connect/token"
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "client_credentials",
+        }
+        try:
+            response = requests.post(
+                url,
+                data=payload,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15,
+                verify=self.verify_ssl,
+            )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung bei 3CX Client Credentials") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX Server nicht erreichbar") from e
+        if response.status_code != 200:
+            raise ValueError(f"3CX Client Credentials fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+        data = response.json()
+        token = _extract_token(data)
+        if not token:
+            raise ConnectionError("3CX Client Credentials erfolgreich, aber kein Access Token erhalten")
+        return token
 
     def get_departments(self):
         params = {
@@ -272,15 +318,15 @@ class CXApi:
         payload = {
             "Group": group,
             "Name": name,
-            "IsRecurrent": False,
-            "HolidayPrompt": filename,
+            "IsRecurrent": True,
+            "HolidayPrompt": "",
             "Day": day.day,
             "Month": day.month,
-            "Year": day.year,
+            "Year": 0,
             "TimeOfStartDate": "P0D",
             "DayEnd": day.day,
             "MonthEnd": day.month,
-            "YearEnd": day.year,
+            "YearEnd": 0,
             "TimeOfEndDate": "P1D",
         }
         result = self._xapi_post("Holidays", payload)

@@ -6,8 +6,11 @@ CONFIG_PATH = os.environ.get("CONFIG_PATH", "/opt/3cx-holiday-importer/config.js
 
 DEFAULTS = {
     "cx_host": "https://localhost:5001",
+    "cx_auth_mode": "userpass",
     "cx_username": "admin",
     "cx_password": "",
+    "cx_client_id": "",
+    "cx_client_secret": "",
     "cx_department_id": "",
     "cx_department_name": "",
     "cx_xapi_token": "",

@@ -40,8 +40,11 @@ class SyncRequest(BaseModel):
 
 class ConfigModel(BaseModel):
     cx_host: str = "https://localhost:5001"
+    cx_auth_mode: str = "userpass"
     cx_username: str = "admin"
     cx_password: str = ""
+    cx_client_id: str = ""
+    cx_client_secret: str = ""
     cx_department_id: str = ""
     cx_department_name: str = ""
     cx_xapi_token: str = ""
@@ -75,12 +78,25 @@ def get_last_log_lines(limit: int = 100) -> list[str]:
 
 def safe_config(config: dict) -> dict:
     masked = config.copy()
-    for key in ("cx_password", "google_api_key"):
+    for key in ("cx_password", "cx_client_secret", "google_api_key"):
         if masked.get(key):
             masked[key] = "***"
     if masked.get("cx_xapi_token"):
         masked["cx_xapi_token"] = "***"
     return masked
+
+
+def make_cx_api(config: dict) -> CXApi:
+    return CXApi(
+        config.get("cx_host", ""),
+        config.get("cx_username", ""),
+        config.get("cx_password", ""),
+        config.get("verify_ssl", False),
+        config.get("cx_xapi_token", ""),
+        config.get("cx_auth_mode", "userpass"),
+        config.get("cx_client_id", ""),
+        config.get("cx_client_secret", ""),
+    )
 
 
 def build_announcement(holiday: dict, config: dict) -> str:
@@ -111,13 +127,7 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
         logger.error("Kein Department ausgewaehlt. Bitte Department laden und auswaehlen.")
         return
     if not dry_run:
-        api = CXApi(
-            config.get("cx_host", ""),
-            config.get("cx_username", ""),
-            config.get("cx_password", ""),
-            config.get("verify_ssl", False),
-            config.get("cx_xapi_token", ""),
-        )
+        api = make_cx_api(config)
 
     ok_count = 0
     for holiday in holidays:
@@ -177,6 +187,8 @@ async def api_health():
         "department_id": config.get("cx_department_id", ""),
         "department_name": config.get("cx_department_name", ""),
         "xapi_token_configured": bool(config.get("cx_xapi_token")),
+        "auth_mode": config.get("cx_auth_mode", "userpass"),
+        "client_credentials_configured": bool(config.get("cx_client_id") and config.get("cx_client_secret")),
     }
 
 
@@ -205,6 +217,8 @@ async def api_save_config(payload: ConfigModel):
     existing = load_config()
     if data.get("cx_password") == "***":
         data["cx_password"] = existing.get("cx_password", "")
+    if data.get("cx_client_secret") == "***":
+        data["cx_client_secret"] = existing.get("cx_client_secret", "")
     if data.get("google_api_key") == "***":
         data["google_api_key"] = existing.get("google_api_key", "")
     if data.get("cx_xapi_token") == "***":
@@ -216,13 +230,7 @@ async def api_save_config(payload: ConfigModel):
 async def api_test_connection():
     config = load_config()
     try:
-        api = CXApi(
-            config.get("cx_host", ""),
-            config.get("cx_username", ""),
-            config.get("cx_password", ""),
-            config.get("verify_ssl", False),
-            config.get("cx_xapi_token", ""),
-        )
+        api = make_cx_api(config)
         result = api.test_connection()
         return {"status": "ok", "connected": True, **result}
     except ValueError as exc:
@@ -240,13 +248,7 @@ async def api_test_connection():
 async def api_departments():
     config = load_config()
     try:
-        api = CXApi(
-            config.get("cx_host", ""),
-            config.get("cx_username", ""),
-            config.get("cx_password", ""),
-            config.get("verify_ssl", False),
-            config.get("cx_xapi_token", ""),
-        )
+        api = make_cx_api(config)
         departments = api.get_departments()
         return {"departments": departments, "count": len(departments)}
     except ValueError as exc:
@@ -271,13 +273,7 @@ async def api_diff(request: SyncRequest):
     cx_source = "not_loaded"
     if department_id:
         try:
-            api = CXApi(
-                config.get("cx_host", ""),
-                config.get("cx_username", ""),
-                config.get("cx_password", ""),
-                config.get("verify_ssl", False),
-                config.get("cx_xapi_token", ""),
-            )
+            api = make_cx_api(config)
             existing = api.get_department_holidays(department_id)
             cx_holidays = existing.get("holidays", [])
             cx_source = existing.get("source", "unknown")
@@ -286,11 +282,12 @@ async def api_diff(request: SyncRequest):
             cx_source = f"error: {exc}"
 
     existing_dates = {holiday.get("date", "") for holiday in cx_holidays}
+    existing_month_days = {holiday.get("date", "")[5:] for holiday in cx_holidays if holiday.get("date", "").startswith("0000-")}
 
     diff = []
     for holiday in holidays:
         filepath = os.path.join(prompt_path, holiday["filename"])
-        cx_exists = holiday["date"] in existing_dates
+        cx_exists = holiday["date"] in existing_dates or holiday["date"][5:] in existing_month_days
         diff.append(
             {
                 **holiday,
