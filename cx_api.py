@@ -221,18 +221,23 @@ class CXApi:
             return {"holidays": [], "source": "no_department"}
 
         attempts = [
-            ("Holidays", None),
-            (f"Groups({department_id})", {"$expand": "Holidays"}),
+            (f"Groups({department_id})", {"$select": "OfficeHolidays", "$expand": "OfficeHolidays"}),
             (f"Groups({department_id})", {"$expand": "OfficeHolidays"}),
-            (f"Groups({department_id})/Holidays", None),
+            (f"Groups({department_id})", {"$expand": "Holidays"}),
+            (f"Groups({department_id})", None),
             (f"Groups({department_id})/OfficeHolidays", None),
+            (f"Groups({department_id})/Holidays", None),
+            ("Holidays", None),
             ("Holidays", {"$filter": f"GroupId eq {department_id}"}),
             ("OfficeHolidays", {"$filter": f"GroupId eq {department_id}"}),
-            (f"Groups({department_id})", None),
         ]
         errors = []
         for path, params in attempts:
-            data = self._xapi_get(path, params=params, allow_missing=True)
+            try:
+                data = self._xapi_get(path, params=params, allow_missing=True)
+            except ValueError as exc:
+                errors.append(f"{path}: {exc}")
+                continue
             if data is None:
                 errors.append(path)
                 continue
