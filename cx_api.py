@@ -91,15 +91,34 @@ class CXApi:
 
     def _auth_headers(self):
         token = _extract_token(self.xapi_token or self.get_access_token())
+        return self._headers_for_token(token)
+
+    def _login_auth_headers(self):
+        token = _extract_token(self.get_access_token())
+        return self._headers_for_token(token)
+
+    @staticmethod
+    def _headers_for_token(token: str):
         if not token:
             raise ConnectionError("Kein 3CX Access Token erhalten")
         authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
         return {"Accept": "application/json", "Authorization": authorization}
 
+    def _request_with_auth_retry(self, method: str, url: str, **kwargs):
+        headers = kwargs.pop("headers", {})
+        auth_headers = self._auth_headers()
+        auth_headers.update(headers)
+        response = requests.request(method, url, headers=auth_headers, **kwargs)
+        if response.status_code in (401, 403) and self.xapi_token and self.username and self.password:
+            retry_headers = self._login_auth_headers()
+            retry_headers.update(headers)
+            response = requests.request(method, url, headers=retry_headers, **kwargs)
+        return response
+
     def _xapi_get(self, path: str, params: dict | None = None, allow_missing: bool = False):
         url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
         try:
-            response = requests.get(url, params=params, headers=self._auth_headers(), timeout=15, verify=self.verify_ssl)
+            response = self._request_with_auth_retry("GET", url, params=params, timeout=15, verify=self.verify_ssl)
         except requests.exceptions.Timeout as e:
             raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
         except requests.exceptions.ConnectionError as e:
@@ -117,10 +136,15 @@ class CXApi:
 
     def _xapi_post(self, path: str, payload: dict):
         url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
-        headers = self._auth_headers()
-        headers["Content-Type"] = "application/json"
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=15, verify=self.verify_ssl)
+            response = self._request_with_auth_retry(
+                "POST",
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=15,
+                verify=self.verify_ssl,
+            )
         except requests.exceptions.Timeout as e:
             raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
         except requests.exceptions.ConnectionError as e:
