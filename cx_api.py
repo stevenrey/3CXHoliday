@@ -158,7 +158,12 @@ class CXApi:
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError("3CX XAPI nicht erreichbar") from e
         if response.status_code in (401, 403):
-            raise ValueError(f"3CX XAPI Anmeldung fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+            token_hint = (
+                "Der konfigurierte XAPI Bearer Token wurde abgelehnt."
+                if self.xapi_token
+                else "Fuer Schreibzugriff ist wahrscheinlich ein aktueller XAPI Bearer Token aus der 3CX Admin-Session noetig."
+            )
+            raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code}. {token_hint} {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
         if response.content:

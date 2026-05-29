@@ -176,6 +176,7 @@ async def api_health():
         "auto_set_holidays": bool(config.get("auto_set_holidays", True)),
         "department_id": config.get("cx_department_id", ""),
         "department_name": config.get("cx_department_name", ""),
+        "xapi_token_configured": bool(config.get("cx_xapi_token")),
     }
 
 
