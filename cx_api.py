@@ -217,8 +217,11 @@ class CXApi:
             raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code}. {token_hint} {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
-        if response.content:
-            return response.json()
+        if response.content and response.text.strip():
+            try:
+                return response.json()
+            except ValueError:
+                return {"raw": response.text}
         return {}
 
     def _xapi_delete(self, path: str, allow_missing: bool = False):
@@ -296,8 +299,11 @@ class CXApi:
             raise ValueError(f"3CX Prompt-Upload fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX Prompt-Upload Antwort: HTTP {response.status_code} {response.text[:300]}")
-        if response.content:
-            return response.json()
+        if response.content and response.text.strip():
+            try:
+                return response.json()
+            except ValueError:
+                return {"raw": response.text}
         return {}
 
     def test_connection(self):

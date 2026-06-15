@@ -60,6 +60,7 @@ class ConfigModel(BaseModel):
         "Sie haben {company} angerufen. Wir sind am {weekday}, den {date} wegen {holiday} geschlossen. "
         "Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht."
     )
+    include_bridge_days: bool = False
     auto_set_holidays: bool = True
     verify_ssl: bool = False
 
@@ -112,7 +113,7 @@ def build_announcement(holiday: dict, config: dict) -> str:
 
 def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] | None = None) -> None:
     logger.info("Starte Sync fuer Jahr %s (dry_run=%s)", year, dry_run)
-    holidays = get_holidays(config.get("region", "CH-ZH"), year)
+    holidays = get_holidays(config.get("region", "CH-ZH"), year, config.get("include_bridge_days", False))
     selected = set(selected_dates or [])
     if selected_dates is not None:
         holidays = [holiday for holiday in holidays if holiday["date"] in selected]
@@ -167,7 +168,7 @@ async def index(request: Request):
             "request": request,
             "base_path": ROOT_PATH.rstrip("/"),
             "config": safe_config(config),
-            "holidays": get_holidays(config.get("region", "CH-ZH"), year),
+            "holidays": get_holidays(config.get("region", "CH-ZH"), year, config.get("include_bridge_days", False)),
             "regions": get_all_regions(),
             "year": year,
             "piper_status": check_piper_available(config),
@@ -186,6 +187,7 @@ async def api_health():
         "root_path": ROOT_PATH,
         "piper": check_piper_available(config),
         "auto_set_holidays": bool(config.get("auto_set_holidays", True)),
+        "include_bridge_days": bool(config.get("include_bridge_days", False)),
         "department_id": config.get("cx_department_id", ""),
         "department_name": config.get("cx_department_name", ""),
         "xapi_token_configured": bool(config.get("cx_xapi_token")),
@@ -204,7 +206,7 @@ async def api_holidays(year: Optional[int] = None, region: Optional[str] = None)
     config = load_config()
     selected_year = year or datetime.now().year
     selected_region = region or config.get("region", "CH-ZH")
-    holidays = get_holidays(selected_region, selected_year)
+    holidays = get_holidays(selected_region, selected_year, config.get("include_bridge_days", False))
     return {"holidays": holidays, "year": selected_year, "region": selected_region, "count": len(holidays)}
 
 
@@ -286,7 +288,7 @@ async def api_departments():
 async def api_diff(request: SyncRequest):
     config = load_config()
     year = request.year or datetime.now().year
-    holidays = get_holidays(config.get("region", "CH-ZH"), year)
+    holidays = get_holidays(config.get("region", "CH-ZH"), year, config.get("include_bridge_days", False))
     prompt_path = config.get("prompt_path", "/var/lib/3cxpbx/Instance1/Data/Ivr/Prompts")
     department_id = config.get("cx_department_id", "")
     cx_holidays = []

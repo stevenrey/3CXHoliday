@@ -26,6 +26,7 @@ DEFAULTS = {
         "Sie haben {company} angerufen. Wir sind am {weekday}, den {date} wegen {holiday} geschlossen. "
         "Bitte rufen Sie uns am naechsten Werktag zurueck oder hinterlassen Sie eine Nachricht."
     ),
+    "include_bridge_days": False,
     "auto_set_holidays": True,
     "verify_ssl": False,
 }

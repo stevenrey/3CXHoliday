@@ -83,6 +83,7 @@
             </select>
           </div>
         </div>
+        <label><input id="include_bridge_days" type="checkbox" {% if config.include_bridge_days %}checked{% endif %} style="width:auto;"> Brueckentage einbeziehen (Freitag nach Donnerstag-Feiertag)</label>
         <div class="actions">
           <button class="secondary" onclick="loadHolidays()">Aktualisieren</button>
           <button class="secondary" onclick="showDiff()">Vorschau</button>
@@ -234,6 +235,7 @@
         company_name: qs("company_name").value,
         phone_number: qs("phone_number").value,
         announcement_template: qs("announcement_template").value,
+        include_bridge_days: qs("include_bridge_days").checked,
         auto_set_holidays: qs("auto_set_holidays").checked,
         verify_ssl: qs("verify_ssl").checked
       };
@@ -252,6 +254,7 @@
     }
 
     async function loadHolidays() {
+      await saveConfig();
       const year = qs("year").value;
       const region = encodeURIComponent(qs("region").value);
       const resp = await fetch(api(`/api/holidays?year=${year}&region=${region}`));
