@@ -81,12 +81,6 @@ mkdir -p /etc/nginx/snippets
 mkdir -p "${NGINX_BACKUP_DIR}"
 rm -f /etc/nginx/conf.d/holiday-importer.conf
 rm -f /etc/nginx/conf.d/3cx-holiday-importer-ssl.conf
-if [ -f /var/lib/3cxpbx/Bin/nginx/conf/nginx.conf ] && ! nginx -T 2>&1 | grep -q "/var/lib/3cxpbx/Bin/nginx/conf/nginx.conf"; then
-  echo "==> 3CX Nginx Hauptkonfiguration aktivieren"
-  cat > /etc/nginx/conf.d/3cxpbx.conf <<'NGINX3CX'
-include /var/lib/3cxpbx/Bin/nginx/conf/nginx.conf;
-NGINX3CX
-fi
 cat > "${NGINX_SNIPPET}" <<'NGINX'
 location = /holiday-import {
     return 301 /holiday-import/;
