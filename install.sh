@@ -7,6 +7,7 @@ BRANCH="${BRANCH:-main}"
 SERVICE_FILE="/etc/systemd/system/3cx-holiday-importer.service"
 NGINX_SNIPPET="/etc/nginx/snippets/3cx-holiday-importer-location.conf"
 NGINX_INCLUDE="include ${NGINX_SNIPPET};"
+NGINX_SSL_FALLBACK="/etc/nginx/conf.d/3cx-holiday-importer-ssl.conf"
 NGINX_BACKUP_DIR="/root/3cx-holiday-importer-nginx-backups"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
 PIPER_RELEASE_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
@@ -86,7 +87,7 @@ location /holiday-import/ {
 }
 NGINX
 
-python3 - "$NGINX_SNIPPET" "$NGINX_INCLUDE" "$NGINX_BACKUP_DIR" <<'PY'
+python3 - "$NGINX_SNIPPET" "$NGINX_INCLUDE" "$NGINX_BACKUP_DIR" "$NGINX_SSL_FALLBACK" <<'PY'
 import pathlib
 import re
 import subprocess
@@ -95,6 +96,7 @@ import sys
 snippet = pathlib.Path(sys.argv[1])
 include_line = sys.argv[2]
 backup_dir = pathlib.Path(sys.argv[3])
+ssl_fallback = pathlib.Path(sys.argv[4])
 
 def add_path(paths, path):
     try:
@@ -145,6 +147,94 @@ def find_ssl_server_end(text):
             return pos - 1
     return None
 
+def extract_ssl_pair_from_config(paths):
+    cert_pattern = re.compile(r"ssl_certificate\s+([^;]+);")
+    key_pattern = re.compile(r"ssl_certificate_key\s+([^;]+);")
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        cert_match = cert_pattern.search(text)
+        key_match = key_pattern.search(text)
+        if cert_match and key_match:
+            cert = pathlib.Path(cert_match.group(1).strip().strip('"\''))
+            key = pathlib.Path(key_match.group(1).strip().strip('"\''))
+            if cert.exists() and key.exists():
+                return cert, key
+    return None, None
+
+def find_3cx_ssl_pair():
+    roots = [
+        pathlib.Path("/var/lib/3cxpbx/Bin/nginx/conf"),
+        pathlib.Path("/var/lib/3cxpbx/Instance1"),
+        pathlib.Path("/var/lib/3cxpbx"),
+        pathlib.Path("/etc/ssl"),
+    ]
+    certs = []
+    keys = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            name = path.name.lower()
+            if path.suffix.lower() in (".pem", ".crt"):
+                if "key" in name or "priv" in name:
+                    keys.append(path)
+                elif "cert" in name or "fullchain" in name or "domain" in name:
+                    certs.append(path)
+            elif path.suffix.lower() == ".key":
+                keys.append(path)
+
+    def score_cert(path):
+        name = path.name.lower()
+        score = 0
+        if "domain_cert" in name:
+            score += 20
+        if "cert" in name:
+            score += 10
+        if "fullchain" in name:
+            score += 8
+        return score
+
+    def score_key(path):
+        name = path.name.lower()
+        score = 0
+        if "domain_key" in name:
+            score += 20
+        if "key" in name:
+            score += 10
+        return score
+
+    certs.sort(key=score_cert, reverse=True)
+    keys.sort(key=score_key, reverse=True)
+    for cert in certs:
+        cert_hint = cert.name.lower().replace("domain_cert", "").replace("cert", "").replace("fullchain", "")
+        for key in keys:
+            key_hint = key.name.lower().replace("domain_key", "").replace("key", "").replace("priv", "")
+            if cert.parent == key.parent and (cert_hint == key_hint or cert_hint in key_hint or key_hint in cert_hint):
+                return cert, key
+    if certs and keys:
+        return certs[0], keys[0]
+    return None, None
+
+def write_fallback_ssl_server(cert, key):
+    ssl_fallback.parent.mkdir(parents=True, exist_ok=True)
+    text = f"""server {{
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name _;
+
+    ssl_certificate {cert};
+    ssl_certificate_key {key};
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    {include_line}
+}}
+"""
+    ssl_fallback.write_text(text, encoding="utf-8")
+    print(f"Kein aktiver HTTPS server{{}} Block gefunden. Fallback-HTTPS-Block erstellt: {ssl_fallback}")
+    print(f"Verwendetes SSL Zertifikat: {cert}")
+
 for path in paths:
     if not path.is_file():
         continue
@@ -164,7 +254,14 @@ for path in paths:
         print(f"Nginx Include in {path} eingefuegt. Backup: {backup}")
         sys.exit(0)
 
-print("Kein bestehender SSL server{} Block in der geladenen Nginx-Konfiguration gefunden.", file=sys.stderr)
+cert, key = extract_ssl_pair_from_config(paths)
+if not cert or not key:
+    cert, key = find_3cx_ssl_pair()
+if cert and key:
+    write_fallback_ssl_server(cert, key)
+    sys.exit(0)
+
+print("Kein bestehender SSL server{} Block und kein bestehendes 3CX SSL Zertifikat gefunden.", file=sys.stderr)
 print(f"Bitte manuell in den bestehenden HTTPS server{{}} Block einfuegen: {include_line}", file=sys.stderr)
 sys.exit(1)
 PY
