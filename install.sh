@@ -89,16 +89,40 @@ NGINX
 python3 - "$NGINX_SNIPPET" "$NGINX_INCLUDE" "$NGINX_BACKUP_DIR" <<'PY'
 import pathlib
 import re
+import subprocess
 import sys
 
 snippet = pathlib.Path(sys.argv[1])
 include_line = sys.argv[2]
 backup_dir = pathlib.Path(sys.argv[3])
+
+def add_path(paths, path):
+    try:
+        path = path.resolve()
+    except OSError:
+        return
+    if path.is_file() and path != snippet.resolve() and path not in paths:
+        if ".bak" not in path.name and "holiday-importer" not in path.name:
+            paths.append(path)
+
 paths = []
-for base in (pathlib.Path("/etc/nginx/sites-enabled"), pathlib.Path("/etc/nginx/conf.d"), pathlib.Path("/etc/nginx")):
+try:
+    dump = subprocess.run(["nginx", "-T"], text=True, capture_output=True, check=False)
+    nginx_dump = f"{dump.stdout}\n{dump.stderr}"
+    for match in re.finditer(r"^# configuration file ([^:]+):", nginx_dump, re.MULTILINE):
+        add_path(paths, pathlib.Path(match.group(1)))
+except Exception:
+    pass
+
+for base in (
+    pathlib.Path("/etc/nginx/sites-enabled"),
+    pathlib.Path("/etc/nginx/conf.d"),
+    pathlib.Path("/etc/nginx"),
+    pathlib.Path("/var/lib/3cxpbx/Bin/nginx/conf"),
+):
     if base.exists():
-        paths.extend(path for path in base.rglob("*.conf") if path != snippet)
-paths.extend(path for path in pathlib.Path("/etc/nginx/sites-enabled").glob("*") if path.is_file())
+        for path in base.rglob("*"):
+            add_path(paths, path)
 
 def find_ssl_server_end(text):
     for match in re.finditer(r"server\s*\{", text):
@@ -112,7 +136,10 @@ def find_ssl_server_end(text):
                 depth -= 1
             pos += 1
         block = text[match.start():pos]
-        if re.search(r"listen\s+[^;]*443[^;]*ssl", block) and "ssl_certificate" in block:
+        has_ssl_listen = re.search(r"listen\s+[^;]*ssl[^;]*;", block)
+        has_https_port = re.search(r"listen\s+[^;]*(443|5001)[^;]*;", block)
+        has_ssl_certificate = "ssl_certificate" in block
+        if has_ssl_listen and (has_https_port or has_ssl_certificate):
             return pos - 1
     return None
 
@@ -132,7 +159,7 @@ for path in paths:
         print(f"Nginx Include in {path} eingefuegt. Backup: {backup}")
         sys.exit(0)
 
-print("Kein bestehender SSL server{} Block in /etc/nginx/sites-enabled oder /etc/nginx/conf.d gefunden.", file=sys.stderr)
+print("Kein bestehender SSL server{} Block in der geladenen Nginx-Konfiguration gefunden.", file=sys.stderr)
 print(f"Bitte manuell in den bestehenden HTTPS server{{}} Block einfuegen: {include_line}", file=sys.stderr)
 sys.exit(1)
 PY
