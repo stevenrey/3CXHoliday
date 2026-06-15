@@ -144,10 +144,12 @@ class CXApi:
         self._session_logged_in = False
 
     def _auth_headers(self):
-        if self.auth_mode == "clientcreds" or (self.username and self.password):
+        if self.xapi_token:
+            token = _extract_token(self.xapi_token)
+        elif self.auth_mode == "clientcreds" or (self.username and self.password):
             token = _extract_token(self.get_access_token())
         else:
-            token = _extract_token(self.xapi_token)
+            token = ""
         return self._headers_for_token(token)
 
     def _login_auth_headers(self):
@@ -162,7 +164,7 @@ class CXApi:
         return {"Accept": "application/json", "Authorization": authorization}
 
     def get_token_info(self):
-        token = _extract_token(self.get_access_token())
+        token = _extract_token(self.xapi_token) if self.xapi_token else _extract_token(self.get_access_token())
         payload = _decode_jwt_payload(token)
         roles = payload.get("role", [])
         max_role = payload.get("MaxRole", "")
@@ -179,14 +181,11 @@ class CXApi:
     def assert_holiday_write_access(self):
         info = self.get_token_info()
         if not info.get("can_write_holidays"):
-            if self.auth_mode == "userpass" and self.username and self.password:
-                info["session_fallback"] = True
-                return info
             roles = ", ".join(info.get("roles", [])) or "keine"
             raise PermissionError(
                 "Der aktuelle 3CX Token darf keine Feiertage erstellen. "
                 f"User={info.get('user') or 'unbekannt'}, MaxRole={info.get('max_role') or 'leer'}, Rollen={roles}. "
-                "Bitte einen 3CX Benutzer mit Admin-/Systemrollen oder Client Credentials mit Schreibrechten verwenden."
+                "Bitte in der GUI den 3CX Browser-Token uebernehmen oder Client Credentials mit Schreibrechten verwenden."
             )
         return info
 
@@ -559,7 +558,7 @@ class CXApi:
             result = self._xapi_post("Holidays", payload)
             return {"status": "created", "payload": payload, "response": result, "api": "xapi_bearer"}
         except ValueError as exc:
-            if self.auth_mode != "userpass" or "HTTP 403" not in str(exc):
+            if self.xapi_token or self.auth_mode != "userpass" or "HTTP 403" not in str(exc):
                 raise
 
         try:

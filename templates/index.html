@@ -124,7 +124,10 @@
         </div>
         <label for="cx_xapi_token">XAPI Bearer Token optional</label>
         <input id="cx_xapi_token" type="password" value="{{ config.cx_xapi_token }}" placeholder="Nur falls Departments per Login nicht ladbar sind">
-        <div class="hint">Normalerweise reicht Benutzer/Passwort oder Client Credentials. Den Bearer Token nur fuer Tests eintragen.</div>
+        <div class="hint">Kann automatisch aus der angemeldeten 3CX Browser-Session uebernommen werden.</div>
+        <div class="actions">
+          <button class="secondary" onclick="useBrowserToken()">Browser-Token uebernehmen</button>
+        </div>
         <label for="prompt_path">Prompt-Pfad</label>
         <input id="prompt_path" value="{{ config.prompt_path }}">
         <label for="cx_department_id">Department fuer Feiertage</label>
@@ -251,6 +254,80 @@
       const isClientCreds = qs("cx_auth_mode").value === "clientcreds";
       qs("userpassAuth").style.display = isClientCreds ? "none" : "block";
       qs("clientCredsAuth").style.display = isClientCreds ? "block" : "none";
+    }
+
+    function decodeJwtPayload(token) {
+      const clean = String(token || "").replace(/^Bearer\s+/i, "");
+      const parts = clean.split(".");
+      if (parts.length < 2) return null;
+      try {
+        const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const padded = payload + "=".repeat((4 - payload.length % 4) % 4);
+        return JSON.parse(atob(padded));
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function tokenCanWriteHolidays(payload) {
+      const roles = Array.isArray(payload?.role) ? payload.role : (payload?.role ? [payload.role] : []);
+      const roleSet = new Set(roles.map((role) => String(role).toLowerCase()));
+      const maxRole = String(payload?.MaxRole || "").toLowerCase();
+      return ["admin", "globaladmin", "systemadmin", "phonesystemadmin", "machineadmin", "apps.readwrite", "groups.create"].some((role) => roleSet.has(role))
+        || ["system_owners", "system_owner", "admins", "admin"].includes(maxRole);
+    }
+
+    function collectJwtCandidates(value, candidates, depth = 0) {
+      if (!value || depth > 4) return;
+      if (typeof value === "string") {
+        const matches = value.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g) || [];
+        matches.forEach((token) => {
+          const payload = decodeJwtPayload(token);
+          if (!payload) return;
+          const audience = payload.aud || "";
+          if (audience !== "/api") return;
+          candidates.push({token, payload, canWrite: tokenCanWriteHolidays(payload)});
+        });
+        try {
+          collectJwtCandidates(JSON.parse(value), candidates, depth + 1);
+        } catch (error) {
+          return;
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((item) => collectJwtCandidates(item, candidates, depth + 1));
+        return;
+      }
+      if (typeof value === "object") {
+        Object.values(value).forEach((item) => collectJwtCandidates(item, candidates, depth + 1));
+      }
+    }
+
+    function findBrowserToken() {
+      const candidates = [];
+      [localStorage, sessionStorage].forEach((storage) => {
+        for (let index = 0; index < storage.length; index += 1) {
+          collectJwtCandidates(storage.getItem(storage.key(index)), candidates);
+        }
+      });
+      const now = Math.floor(Date.now() / 1000);
+      return candidates
+        .filter((item) => !item.payload.exp || item.payload.exp > now)
+        .sort((a, b) => Number(b.canWrite) - Number(a.canWrite) || (b.payload.exp || 0) - (a.payload.exp || 0))[0] || null;
+    }
+
+    async function useBrowserToken() {
+      const box = qs("connStatus");
+      const candidate = findBrowserToken();
+      if (!candidate) {
+        status(box, "err", "Kein 3CX Browser-Token gefunden. Bitte in diesem Browser zuerst im 3CX Admin/Webclient anmelden und danach diese Seite neu laden.");
+        return;
+      }
+      qs("cx_xapi_token").value = candidate.token;
+      await saveConfig();
+      const roleText = candidate.canWrite ? "mit Schreibrollen" : "ohne erkannte Schreibrollen";
+      status(box, candidate.canWrite ? "ok" : "info", `Browser-Token gespeichert (${roleText}).`);
     }
 
     async function loadHolidays() {
