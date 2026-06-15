@@ -26,7 +26,12 @@ fi
 echo "==> Pakete installieren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git python3 python3-venv python3-pip nginx tar
+apt-get install -y --no-remove ca-certificates curl git python3 python3-venv python3-pip tar
+if ! command -v nginx >/dev/null 2>&1; then
+  echo "Nginx wurde nicht gefunden. Breche ab, damit keine 3CX-Pakete durch Paketkonflikte entfernt werden." >&2
+  echo "Bitte zuerst den originalen 3CX Nginx/Webserver wiederherstellen." >&2
+  exit 1
+fi
 
 echo "==> App nach ${APP_DIR} installieren"
 if [ -d "${APP_DIR}/.git" ]; then
