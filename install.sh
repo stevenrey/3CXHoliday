@@ -105,24 +105,26 @@ def add_path(paths, path):
         if ".bak" not in path.name and "holiday-importer" not in path.name:
             paths.append(path)
 
-paths = []
+active_paths = []
 try:
     dump = subprocess.run(["nginx", "-T"], text=True, capture_output=True, check=False)
     nginx_dump = f"{dump.stdout}\n{dump.stderr}"
     for match in re.finditer(r"^# configuration file ([^:]+):", nginx_dump, re.MULTILINE):
-        add_path(paths, pathlib.Path(match.group(1)))
+        add_path(active_paths, pathlib.Path(match.group(1)))
 except Exception:
     pass
 
+fallback_paths = []
 for base in (
     pathlib.Path("/etc/nginx/sites-enabled"),
     pathlib.Path("/etc/nginx/conf.d"),
-    pathlib.Path("/etc/nginx"),
     pathlib.Path("/var/lib/3cxpbx/Bin/nginx/conf"),
 ):
     if base.exists():
         for path in base.rglob("*"):
-            add_path(paths, path)
+            add_path(fallback_paths, path)
+
+paths = active_paths + [path for path in fallback_paths if path not in active_paths]
 
 def find_ssl_server_end(text):
     for match in re.finditer(r"server\s*\{", text):
@@ -148,8 +150,11 @@ for path in paths:
         continue
     text = path.read_text(encoding="utf-8", errors="ignore")
     if include_line in text:
-        print(f"Nginx Include ist bereits in {path}")
-        sys.exit(0)
+        if path in active_paths:
+            print(f"Nginx Include ist bereits in aktiver Konfiguration {path}")
+            sys.exit(0)
+        print(f"Nginx Include steht nur in inaktiver Konfiguration {path}; suche weiter.")
+        continue
     end = find_ssl_server_end(text)
     if end is not None:
         backup = backup_dir / f"{path.name}.bak-holiday-import"
