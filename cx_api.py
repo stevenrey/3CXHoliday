@@ -139,6 +139,9 @@ class CXApi:
         self.auth_mode = auth_mode or "userpass"
         self.client_id = client_id
         self.client_secret = client_secret
+        self.session = requests.Session()
+        self.session.verify = verify_ssl
+        self._session_logged_in = False
 
     def _auth_headers(self):
         if self.auth_mode == "clientcreds" or (self.username and self.password):
@@ -176,6 +179,9 @@ class CXApi:
     def assert_holiday_write_access(self):
         info = self.get_token_info()
         if not info.get("can_write_holidays"):
+            if self.auth_mode == "userpass" and self.username and self.password:
+                info["session_fallback"] = True
+                return info
             roles = ", ".join(info.get("roles", [])) or "keine"
             raise PermissionError(
                 "Der aktuelle 3CX Token darf keine Feiertage erstellen. "
@@ -248,6 +254,74 @@ class CXApi:
             raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code}. {token_hint} {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
+        if response.content and response.text.strip():
+            try:
+                return response.json()
+            except ValueError:
+                return {"raw": response.text}
+        return {}
+
+    def _session_login(self):
+        if self._session_logged_in:
+            return
+        if not self.host or not self.username or not self.password:
+            raise ValueError("3CX Zugangsdaten fuer Session-Login unvollstaendig")
+        url = f"{self.host}/api/v1/security/credentials"
+        payload = {"SecurityCode": "", "Username": self.username, "Password": self.password}
+        try:
+            response = self.session.post(
+                url,
+                json=payload,
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung beim 3CX Session-Login") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX Session-Login nicht erreichbar") from e
+        if response.status_code not in (200, 204):
+            raise ValueError(f"3CX Session-Login fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+        if response.content and response.text.strip():
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+            status = str(data.get("Status", "")).lower()
+            if status and status not in {"authsuccess", "authenticated"}:
+                raise ValueError(f"3CX Session-Login fehlgeschlagen: {data.get('Status')}")
+        self._session_logged_in = True
+
+    def _session_json_request(self, method: str, path: str, payload: dict | None = None):
+        self._session_login()
+        url = f"{self.host}{path}"
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": self.host,
+            "Referer": f"{self.host}/",
+            "ngsw-bypass": "bypass",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        }
+        try:
+            response = self.session.request(
+                method,
+                url,
+                json=payload,
+                headers=headers,
+                timeout=15,
+            )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung bei der 3CX Session API") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX Session API nicht erreichbar") from e
+        if response.status_code == 401:
+            self._session_logged_in = False
+            self._session_login()
+            response = self.session.request(method, url, json=payload, headers=headers, timeout=15)
+        if response.status_code in (401, 403):
+            raise ValueError(f"3CX Session API Schreibzugriff fehlgeschlagen: HTTP {response.status_code} {response.text[:300]}")
+        if response.status_code not in (200, 201, 204):
+            raise ConnectionError(f"3CX Session API Antwort: HTTP {response.status_code} {response.text[:300]}")
         if response.content and response.text.strip():
             try:
                 return response.json()
@@ -481,8 +555,26 @@ class CXApi:
             "YearEnd": 0,
             "TimeOfEndDate": "P1D",
         }
-        result = self._xapi_post("Holidays", payload)
-        return {"status": "created", "payload": payload, "response": result}
+        try:
+            result = self._xapi_post("Holidays", payload)
+            return {"status": "created", "payload": payload, "response": result, "api": "xapi_bearer"}
+        except ValueError as exc:
+            if self.auth_mode != "userpass" or "HTTP 403" not in str(exc):
+                raise
+
+        try:
+            result = self._session_json_request("POST", "/xapi/v1/Holidays", payload)
+            return {"status": "created", "payload": payload, "response": result, "api": "xapi_session"}
+        except (ValueError, ConnectionError):
+            legacy_payload = {
+                "Name": name,
+                "Date": date_str,
+                "Repeat": True,
+                "PromptFile": filename,
+                "Group": group,
+            }
+            result = self._session_json_request("POST", "/api/v1/holiday", legacy_payload)
+            return {"status": "created", "payload": legacy_payload, "response": result, "api": "legacy_session"}
 
     def get_holidays(self):
         return []
