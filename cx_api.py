@@ -172,7 +172,7 @@ class CXApi:
             raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError("3CX XAPI nicht erreichbar") from e
-        if allow_missing and response.status_code in (400, 404):
+        if allow_missing and response.status_code in (400, 404, 405):
             return None
         if response.status_code in (401, 403):
             raise ValueError(
