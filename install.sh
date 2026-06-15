@@ -23,13 +23,17 @@ if [ -z "${APP_DIR}" ] || [ "${APP_DIR}" = "/" ]; then
   exit 1
 fi
 
-echo "==> Pakete installieren"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-remove ca-certificates curl git python3 python3-venv python3-pip tar
-if ! command -v nginx >/dev/null 2>&1; then
-  echo "Nginx wurde nicht gefunden. Breche ab, damit keine 3CX-Pakete durch Paketkonflikte entfernt werden." >&2
-  echo "Bitte zuerst den originalen 3CX Nginx/Webserver wiederherstellen." >&2
+echo "==> Systemvoraussetzungen pruefen"
+missing_tools=()
+for tool in curl git python3 tar nginx; do
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    missing_tools+=("${tool}")
+  fi
+done
+if [ "${#missing_tools[@]}" -gt 0 ]; then
+  echo "Fehlende Tools: ${missing_tools[*]}" >&2
+  echo "Breche ab. Der Installer installiert auf 3CX-Systemen absichtlich keine Debian-Pakete," >&2
+  echo "damit das 3CX-Paket nicht durch Paketkonflikte entfernt wird." >&2
   exit 1
 fi
 
