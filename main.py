@@ -129,6 +129,12 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
         return
     if not dry_run:
         api = make_cx_api(config)
+        try:
+            token_info = api.assert_holiday_write_access()
+            logger.info("3CX Schreibrechte bestaetigt fuer User %s (%s)", token_info.get("user", ""), token_info.get("max_role", ""))
+        except PermissionError as exc:
+            logger.error("%s", exc)
+            return
 
     ok_count = 0
     for holiday in holidays:

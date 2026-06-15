@@ -38,6 +38,23 @@ def _decode_jwt_payload(token: str):
         return {}
 
 
+def _roles_allow_holiday_write(roles, max_role=""):
+    role_set = {str(role).lower() for role in roles or []}
+    max_role_text = str(max_role or "").lower()
+    admin_markers = {
+        "admin",
+        "globaladmin",
+        "systemadmin",
+        "phonesystemadmin",
+        "machineadmin",
+        "apps.readwrite",
+        "groups.create",
+    }
+    if any(marker in role_set for marker in admin_markers):
+        return True
+    return max_role_text in {"system_owners", "system_owner", "admins", "admin"}
+
+
 def _normalize_date(value):
     if not value:
         return ""
@@ -144,14 +161,28 @@ class CXApi:
     def get_token_info(self):
         token = _extract_token(self.get_access_token())
         payload = _decode_jwt_payload(token)
+        roles = payload.get("role", [])
+        max_role = payload.get("MaxRole", "")
         return {
             "audience": payload.get("aud", ""),
             "issuer": payload.get("iss", ""),
             "user": payload.get("unique_name", payload.get("name", "")),
-            "max_role": payload.get("MaxRole", ""),
-            "roles": payload.get("role", []),
+            "max_role": max_role,
+            "roles": roles,
+            "can_write_holidays": _roles_allow_holiday_write(roles, max_role),
             "expires_at": payload.get("exp", ""),
         }
+
+    def assert_holiday_write_access(self):
+        info = self.get_token_info()
+        if not info.get("can_write_holidays"):
+            roles = ", ".join(info.get("roles", [])) or "keine"
+            raise PermissionError(
+                "Der aktuelle 3CX Token darf keine Feiertage erstellen. "
+                f"User={info.get('user') or 'unbekannt'}, MaxRole={info.get('max_role') or 'leer'}, Rollen={roles}. "
+                "Bitte einen 3CX Benutzer mit Admin-/Systemrollen oder Client Credentials mit Schreibrechten verwenden."
+            )
+        return info
 
     def _request_with_auth_retry(self, method: str, url: str, **kwargs):
         headers = kwargs.pop("headers", {})
