@@ -142,6 +142,7 @@ class CXApi:
         self.session = requests.Session()
         self.session.verify = verify_ssl
         self._session_logged_in = False
+        self._token_cache = {"token": "", "expires_at": 0.0}
 
     def _auth_headers(self):
         if self.xapi_token:
@@ -181,6 +182,9 @@ class CXApi:
     def assert_holiday_write_access(self):
         info = self.get_token_info()
         if not info.get("can_write_holidays"):
+            if self.auth_mode == "userpass" and self.username and self.password and not self.xapi_token:
+                info["webclient_login"] = True
+                return info
             roles = ", ".join(info.get("roles", [])) or "keine"
             raise PermissionError(
                 "Der aktuelle 3CX Token darf keine Feiertage erstellen. "
@@ -251,6 +255,40 @@ class CXApi:
                 else "Fuer Schreibzugriff ist wahrscheinlich ein aktueller XAPI Bearer Token aus der 3CX Admin-Session noetig."
             )
             raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code}. {token_hint} {response.text[:300]}")
+        if response.status_code not in (200, 201, 204):
+            raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
+        if response.content and response.text.strip():
+            try:
+                return response.json()
+            except ValueError:
+                return {"raw": response.text}
+        return {}
+
+    def _xapi_patch(self, path: str, payload: dict):
+        url = f"{self.host}/xapi/v1/{path.lstrip('/')}"
+        patch_headers = {
+            "Content-Type": "application/json",
+            "Origin": self.host,
+            "Referer": f"{self.host}/",
+            "ngsw-bypass": "bypass",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        }
+        try:
+            response = self._request_with_auth_retry(
+                "PATCH",
+                url,
+                json=payload,
+                headers=patch_headers,
+                timeout=15,
+                verify=self.verify_ssl,
+            )
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("Zeitueberschreitung bei der 3CX XAPI") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError("3CX XAPI nicht erreichbar") from e
+        if response.status_code in (401, 403):
+            raise ValueError(f"3CX XAPI Schreibzugriff fehlgeschlagen: HTTP {response.status_code}. {response.text[:300]}")
         if response.status_code not in (200, 201, 204):
             raise ConnectionError(f"3CX XAPI Antwort: HTTP {response.status_code} {response.text[:300]}")
         if response.content and response.text.strip():
@@ -417,24 +455,38 @@ class CXApi:
     def get_access_token(self):
         if self.auth_mode == "clientcreds":
             return self.get_client_credentials_token()
+        now = time.time()
+        if self._token_cache["token"] and self._token_cache["expires_at"] > now + 10:
+            return self._token_cache["token"]
         if not self.host or not self.username or not self.password:
             raise ValueError("3CX Zugangsdaten unvollstaendig")
         url = f"{self.host}/webclient/api/Login/GetAccessToken"
         payload = {"Username": self.username, "Password": self.password, "SecurityCode": ""}
         try:
-            response = requests.post(url, json=payload, headers={"Accept": "application/json"}, timeout=15, verify=self.verify_ssl)
+            response = requests.post(
+                url,
+                json=payload,
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                timeout=15,
+                verify=self.verify_ssl,
+            )
         except requests.exceptions.Timeout as e:
             raise TimeoutError("Zeitueberschreitung bei der Verbindung zu 3CX") from e
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError("3CX Server nicht erreichbar") from e
-        if response.status_code in (200, 204):
-            if not response.content:
-                return ""
+        if response.status_code == 200:
             data = response.json()
-            token = _extract_token(data)
+            if data.get("Status") and data.get("Status") != "AuthSuccess":
+                raise ValueError(f"3CX Anmeldung fehlgeschlagen: {data.get('Status')}")
+            token_data = data.get("Token") if isinstance(data.get("Token"), dict) else data
+            token = _extract_token(token_data)
             if not token:
-                raise ConnectionError("3CX Login erfolgreich, aber kein Access Token erhalten")
+                raise ConnectionError(f"3CX Login erfolgreich, aber kein Access Token erhalten: {str(data)[:200]}")
+            expires_in = int(token_data.get("expires_in", 3600)) if isinstance(token_data, dict) else 3600
+            self._token_cache = {"token": token, "expires_at": now + expires_in}
             return token
+        if response.status_code == 204:
+            return ""
         if response.status_code in (401, 403):
             raise ValueError("3CX Anmeldung fehlgeschlagen")
         raise ConnectionError(f"3CX Antwort: HTTP {response.status_code}")
@@ -544,7 +596,7 @@ class CXApi:
             "Group": group,
             "Name": name,
             "IsRecurrent": True,
-            "HolidayPrompt": filename,
+            "HolidayPrompt": "",
             "Day": day.day,
             "Month": day.month,
             "Year": 0,
@@ -554,26 +606,21 @@ class CXApi:
             "YearEnd": 0,
             "TimeOfEndDate": "P1D",
         }
-        try:
-            result = self._xapi_post("Holidays", payload)
-            return {"status": "created", "payload": payload, "response": result, "api": "xapi_bearer"}
-        except ValueError as exc:
-            if self.xapi_token or self.auth_mode != "userpass" or "HTTP 403" not in str(exc):
-                raise
-
-        try:
-            result = self._session_json_request("POST", "/xapi/v1/Holidays", payload)
-            return {"status": "created", "payload": payload, "response": result, "api": "xapi_session"}
-        except (ValueError, ConnectionError):
-            legacy_payload = {
-                "Name": name,
-                "Date": date_str,
-                "Repeat": True,
-                "PromptFile": filename,
-                "Group": group,
+        result = self._xapi_post("Holidays", payload)
+        holiday_id = result.get("Id") or result.get("id")
+        if filename and holiday_id:
+            patch_payload = payload.copy()
+            patch_payload["Id"] = holiday_id
+            patch_payload["HolidayPrompt"] = filename
+            patch_result = self._xapi_patch(f"Holidays({holiday_id})", patch_payload)
+            return {
+                "status": "created",
+                "payload": patch_payload,
+                "response": result,
+                "patch_response": patch_result,
+                "api": "xapi_bearer",
             }
-            result = self._session_json_request("POST", "/api/v1/holiday", legacy_payload)
-            return {"status": "created", "payload": legacy_payload, "response": result, "api": "legacy_session"}
+        return {"status": "created", "payload": payload, "response": result, "api": "xapi_bearer"}
 
     def get_holidays(self):
         return []

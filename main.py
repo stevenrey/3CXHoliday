@@ -131,8 +131,8 @@ def run_sync(config: dict, year: int, dry_run: bool, selected_dates: list[str] |
         api = make_cx_api(config)
         try:
             token_info = api.assert_holiday_write_access()
-            if token_info.get("session_fallback"):
-                logger.info("3CX Bearer-Token hat keine Holiday-Schreibrolle; versuche Session-API-Fallback fuer User %s", token_info.get("user", ""))
+            if token_info.get("webclient_login"):
+                logger.info("3CX Webclient-Login wird verwendet; Holiday-POST entscheidet die Schreibberechtigung fuer User %s (%s)", token_info.get("user", ""), token_info.get("max_role", ""))
             else:
                 logger.info("3CX Schreibrechte bestaetigt fuer User %s (%s)", token_info.get("user", ""), token_info.get("max_role", ""))
         except PermissionError as exc:
