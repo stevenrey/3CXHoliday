@@ -582,6 +582,36 @@ class CXApi:
                 return department.get("number") or department.get("name") or ""
         return ""
 
+    def _get_holidays_list(self):
+        holidays = []
+        skip = 0
+        page_size = 100
+        while True:
+            data = self._xapi_get("Holidays", params={"$top": page_size, "$skip": skip}, allow_missing=True)
+            if not data:
+                break
+            page = data.get("value", data.get("Value", data if isinstance(data, list) else []))
+            if not isinstance(page, list):
+                break
+            holidays.extend(page)
+            if len(page) < page_size:
+                break
+            skip += page_size
+        return holidays
+
+    def _find_existing_holiday(self, name: str, group: str = ""):
+        target_name = (name or "").strip().lower()
+        target_group = (group or "").strip().lower()
+        for holiday in self._get_holidays_list():
+            holiday_name = str(holiday.get("Name") or holiday.get("name") or "").strip().lower()
+            holiday_group = str(holiday.get("Group") or holiday.get("group") or "").strip().lower()
+            if holiday_name != target_name:
+                continue
+            if target_group and holiday_group and holiday_group != target_group:
+                continue
+            return holiday
+        return None
+
     def set_holiday(self, name: str, date_str: str, filename: str, department_id: str = ""):
         if not department_id:
             raise ValueError("Kein Department fuer den Feiertag ausgewaehlt")
@@ -606,6 +636,32 @@ class CXApi:
             "YearEnd": 0,
             "TimeOfEndDate": "P1D",
         }
+        existing = self._find_existing_holiday(name, group)
+        if existing:
+            holiday_id = existing.get("Id") or existing.get("id")
+            patch_payload = {
+                "Id": holiday_id,
+                "Group": existing.get("Group", payload["Group"]),
+                "Name": payload["Name"],
+                "IsRecurrent": existing.get("IsRecurrent", payload["IsRecurrent"]),
+                "HolidayPrompt": filename or existing.get("HolidayPrompt", ""),
+                "Day": payload["Day"],
+                "Month": payload["Month"],
+                "Year": payload["Year"],
+                "DayEnd": payload["DayEnd"],
+                "MonthEnd": payload["MonthEnd"],
+                "YearEnd": payload["YearEnd"],
+                "TimeOfStartDate": existing.get("TimeOfStartDate") or payload["TimeOfStartDate"],
+                "TimeOfEndDate": existing.get("TimeOfEndDate") or payload["TimeOfEndDate"],
+            }
+            patch_result = self._xapi_patch(f"Holidays({holiday_id})", patch_payload)
+            return {
+                "status": "updated",
+                "payload": patch_payload,
+                "response": patch_result,
+                "api": "xapi_bearer",
+            }
+
         result = self._xapi_post("Holidays", payload)
         holiday_id = result.get("Id") or result.get("id")
         if filename and holiday_id:
