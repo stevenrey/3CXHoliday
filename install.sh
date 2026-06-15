@@ -70,6 +70,12 @@ systemctl restart 3cx-holiday-importer
 echo "==> Nginx Location /holiday-import einrichten"
 mkdir -p /etc/nginx/snippets
 mkdir -p "${NGINX_BACKUP_DIR}"
+if [ -f /var/lib/3cxpbx/Bin/nginx/conf/nginx.conf ] && ! nginx -T 2>&1 | grep -q "/var/lib/3cxpbx/Bin/nginx/conf/nginx.conf"; then
+  echo "==> 3CX Nginx Hauptkonfiguration aktivieren"
+  cat > /etc/nginx/conf.d/3cxpbx.conf <<'NGINX3CX'
+include /var/lib/3cxpbx/Bin/nginx/conf/nginx.conf;
+NGINX3CX
+fi
 cat > "${NGINX_SNIPPET}" <<'NGINX'
 location = /holiday-import {
     return 301 /holiday-import/;
