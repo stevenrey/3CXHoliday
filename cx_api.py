@@ -182,15 +182,7 @@ class CXApi:
     def assert_holiday_write_access(self):
         info = self.get_token_info()
         if not info.get("can_write_holidays"):
-            if self.auth_mode == "userpass" and self.username and self.password and not self.xapi_token:
-                info["webclient_login"] = True
-                return info
-            roles = ", ".join(info.get("roles", [])) or "keine"
-            raise PermissionError(
-                "Der aktuelle 3CX Token darf keine Feiertage erstellen. "
-                f"User={info.get('user') or 'unbekannt'}, MaxRole={info.get('max_role') or 'leer'}, Rollen={roles}. "
-                "Bitte in der GUI den 3CX Browser-Token uebernehmen oder Client Credentials mit Schreibrechten verwenden."
-            )
+            info["webclient_login"] = self.auth_mode == "userpass" and bool(self.username and self.password)
         return info
 
     def _request_with_auth_retry(self, method: str, url: str, **kwargs):
